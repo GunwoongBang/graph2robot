@@ -1,3 +1,0 @@
-[console_scripts]
-pointcloud_publisher = robot_simulation.pointcloud_publisher:main
-
