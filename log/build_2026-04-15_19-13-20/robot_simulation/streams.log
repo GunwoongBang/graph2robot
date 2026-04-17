@@ -1,0 +1,23 @@
+[0.859s] Invoking command in '/home/gunwoong/workspace/pcd2scenegraph/src/robot_simulation': PYTHONPATH=/home/gunwoong/workspace/pcd2scenegraph/build/robot_simulation/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/gunwoong/workspace/pcd2scenegraph/install/robot_simulation/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/robot_simulation build --build-base /home/gunwoong/workspace/pcd2scenegraph/build/robot_simulation/build install --record /home/gunwoong/workspace/pcd2scenegraph/build/robot_simulation/install.log --single-version-externally-managed install_data
+[1.133s] running egg_info
+[1.134s] writing ../../build/robot_simulation/robot_simulation.egg-info/PKG-INFO
+[1.134s] writing dependency_links to ../../build/robot_simulation/robot_simulation.egg-info/dependency_links.txt
+[1.134s] writing entry points to ../../build/robot_simulation/robot_simulation.egg-info/entry_points.txt
+[1.135s] writing requirements to ../../build/robot_simulation/robot_simulation.egg-info/requires.txt
+[1.135s] writing top-level names to ../../build/robot_simulation/robot_simulation.egg-info/top_level.txt
+[1.136s] reading manifest file '../../build/robot_simulation/robot_simulation.egg-info/SOURCES.txt'
+[1.137s] adding license file 'LICENSE'
+[1.138s] writing manifest file '../../build/robot_simulation/robot_simulation.egg-info/SOURCES.txt'
+[1.138s] running build
+[1.138s] running build_py
+[1.138s] running install
+[1.140s] running install_lib
+[1.141s] running install_data
+[1.141s] copying launch/robot_simulation.launch.py -> /home/gunwoong/workspace/pcd2scenegraph/install/robot_simulation/share/robot_simulation/launch
+[1.141s] running install_egg_info
+[1.145s] removing '/home/gunwoong/workspace/pcd2scenegraph/install/robot_simulation/lib/python3.10/site-packages/robot_simulation-0.0.0-py3.10.egg-info' (and everything under it)
+[1.146s] Copying ../../build/robot_simulation/robot_simulation.egg-info to /home/gunwoong/workspace/pcd2scenegraph/install/robot_simulation/lib/python3.10/site-packages/robot_simulation-0.0.0-py3.10.egg-info
+[1.147s] running install_scripts
+[1.168s] Installing pointcloud_publisher script to /home/gunwoong/workspace/pcd2scenegraph/install/robot_simulation/lib/robot_simulation
+[1.168s] writing list of installed files to '/home/gunwoong/workspace/pcd2scenegraph/build/robot_simulation/install.log'
+[1.207s] Invoked command in '/home/gunwoong/workspace/pcd2scenegraph/src/robot_simulation' returned '0': PYTHONPATH=/home/gunwoong/workspace/pcd2scenegraph/build/robot_simulation/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/gunwoong/workspace/pcd2scenegraph/install/robot_simulation/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/robot_simulation build --build-base /home/gunwoong/workspace/pcd2scenegraph/build/robot_simulation/build install --record /home/gunwoong/workspace/pcd2scenegraph/build/robot_simulation/install.log --single-version-externally-managed install_data
