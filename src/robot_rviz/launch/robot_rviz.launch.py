@@ -5,11 +5,11 @@ from launch.actions import ExecuteProcess
 
 
 def generate_launch_description() -> LaunchDescription:
-    package_share = get_package_share_directory('robot_simulation')
+    package_share = get_package_share_directory('robot_rviz')
     rviz_config = package_share + '/config/pointcloud.rviz'
 
     pointcloud_node = Node(
-        package='robot_simulation',
+        package='robot_rviz',
         executable='pointcloud_publisher',
         name='pointcloud_publisher',
         output='screen',

@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'robot_simulation'
+package_name = 'robot_rviz'
 
 setup(
     name=package_name,
@@ -12,18 +12,9 @@ setup(
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/launch',
          [
-             'launch/robot_simulation.launch.py',
-             'launch/robot_gazebo.launch.py',
              'launch/robot_rviz.launch.py',
          ]),
-        ('share/' + package_name + '/config', ['config/ekf.yaml']),
-        ('share/' + package_name + '/rviz', ['rviz/pointcloud.rviz']),
-        ('share/' + package_name + '/worlds/meshes',
-         ['worlds/meshes/mesh.obj']),
-        ('share/' + package_name + '/worlds',
-         ['worlds/cloudGlobal_cleaned_excluded.pcd', 'worlds/world.sdf']),
-        ('share/' + package_name + '/models/robot',
-         ['models/robot/model.config', 'models/robot/robot.sdf']),
+        ('share/' + package_name + '/config', ['config/pointcloud.rviz']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -38,7 +29,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'pointcloud_publisher = robot_simulation.pointcloud_publisher:main',
+            'pointcloud_publisher=robot_rviz.pointcloud_publisher:main',
         ],
     },
 )

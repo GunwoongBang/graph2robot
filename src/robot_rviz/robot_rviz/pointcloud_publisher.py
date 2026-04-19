@@ -44,13 +44,12 @@ class PointCloudPublisher(Node):
 
     def _default_pcd_path(self) -> Path:
         try:
-            package_share = Path(
-                get_package_share_directory('robot_simulation'))
+            package_share = Path(get_package_share_directory('robot_gazebo'))
             return package_share / 'worlds' / 'cloudGlobal_cleaned_excluded.pcd'
         except PackageNotFoundError:
             # Fallback for source execution before install/sourcing.
             package_root = Path(__file__).resolve().parent.parent
-            return package_root / 'worlds' / 'cloudGlobal_cleaned_excluded.pcd'
+            return package_root.parent / 'robot_gazebo' / 'worlds' / 'cloudGlobal_cleaned_excluded.pcd'
 
     def _read_ascii_pcd(self) -> tuple[list[float], list[float], list[float]]:
         if not self._pcd_path.exists():
