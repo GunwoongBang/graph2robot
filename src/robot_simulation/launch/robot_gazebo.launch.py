@@ -3,14 +3,16 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import ExecuteProcess
+from launch_ros.actions import Node
 
 
 def generate_launch_description() -> LaunchDescription:
     package_share = get_package_share_directory('robot_simulation')
     world_sdf = package_share + '/worlds/world.sdf'
+    ekf_params = package_share + '/config/ekf.yaml'
 
     gazebo_env = os.environ.copy()
-    gazebo_env['GAZEBO_MODDEL_PATH'] = os.path.join(package_share, 'models')
+    gazebo_env['GAZEBO_MODEL_PATH'] = os.path.join(package_share, 'models')
 
     gazebo = ExecuteProcess(
         cmd=['gazebo', '--verbose', world_sdf],
@@ -18,4 +20,15 @@ def generate_launch_description() -> LaunchDescription:
         output='screen',
     )
 
-    return LaunchDescription([gazebo])
+    ekf_node = Node(
+        package='robot_localization',
+        executable='ekf_node',
+        name='ekf_filter_node',
+        output='screen',
+        parameters=[ekf_params],
+    )
+
+    return LaunchDescription([
+        gazebo,
+        ekf_node,
+    ])

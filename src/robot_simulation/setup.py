@@ -11,7 +11,12 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/launch',
-         ['launch/robot_simulation.launch.py']),
+         [
+             'launch/robot_simulation.launch.py',
+             'launch/robot_gazebo.launch.py',
+             'launch/robot_rviz.launch.py',
+         ]),
+        ('share/' + package_name + '/config', ['config/ekf.yaml']),
         ('share/' + package_name + '/rviz', ['rviz/pointcloud.rviz']),
         ('share/' + package_name + '/worlds/meshes',
          ['worlds/meshes/mesh.obj']),

@@ -14,13 +14,11 @@ class PointCloudPublisher(Node):
     def __init__(self) -> None:
         super().__init__('pointcloud_publisher')
 
-        self.declare_parameter('pcd_path', '')
         self.declare_parameter('frame_id', 'world')
         self.declare_parameter('topic', '/cloud')
         self.declare_parameter('publish_rate_hz', 1.0)
 
-        self._pcd_path = Path(self.get_parameter(
-            'pcd_path').value or self._default_pcd_path())
+        self._pcd_path = Path(self._default_pcd_path())
         self._frame_id = self.get_parameter('frame_id').value
         self._topic = self.get_parameter('topic').value
         self._publish_rate_hz = float(
