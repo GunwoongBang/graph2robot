@@ -3,5 +3,11 @@ build/
 install/
 log/
 
+# IDEs
+.vscode/
+
+# Virtual environment
+venv/
+
 # Environment variables
 .env

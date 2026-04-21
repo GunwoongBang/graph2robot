@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import struct
-from pathlib import Path
-
 import rclpy
+
+from pathlib import Path
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
@@ -14,11 +14,14 @@ class PointCloudPublisher(Node):
     def __init__(self) -> None:
         super().__init__('pointcloud_publisher')
 
+        package_share = Path(get_package_share_directory('robot_gazebo'))
+
         self.declare_parameter('frame_id', 'world')
         self.declare_parameter('topic', '/cloud')
         self.declare_parameter('publish_rate_hz', 1.0)
 
-        self._pcd_path = Path(self._default_pcd_path())
+        self._pcd_path = Path(
+            package_share / 'worlds' / 'cloudGlobal_cleaned_excluded.pcd')
         self._frame_id = self.get_parameter('frame_id').value
         self._topic = self.get_parameter('topic').value
         self._publish_rate_hz = float(
@@ -41,15 +44,6 @@ class PointCloudPublisher(Node):
         self.get_logger().info(
             f'Loaded {self._cloud_msg.width} points, publishing on {self._topic} at {self._publish_rate_hz:.2f} Hz'
         )
-
-    def _default_pcd_path(self) -> Path:
-        try:
-            package_share = Path(get_package_share_directory('robot_gazebo'))
-            return package_share / 'worlds' / 'cloudGlobal_cleaned_excluded.pcd'
-        except PackageNotFoundError:
-            # Fallback for source execution before install/sourcing.
-            package_root = Path(__file__).resolve().parent.parent
-            return package_root.parent / 'robot_gazebo' / 'worlds' / 'cloudGlobal_cleaned_excluded.pcd'
 
     def _read_ascii_pcd(self) -> tuple[list[float], list[float], list[float]]:
         if not self._pcd_path.exists():
