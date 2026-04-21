@@ -72,6 +72,63 @@ class TaskPublisher(Node):
 
         return elements
 
+    def query_selected_task_details(self, element_id: str) -> dict[str, Any] | None:
+        if not self.driver:
+            return None
+
+        query = """
+        MATCH (e:MEPElement {id: $element_id})
+        OPTIONAL MATCH (e)<-[c:CONTAINS]-(system:MEPSystem)
+        OPTIONAL MATCH (e)-[p:PASSES_THROUGH]->(wall:Wall)
+        WITH e,
+             collect(DISTINCT CASE
+                 WHEN system IS NULL THEN NULL
+                 ELSE {
+                     id: system.id,
+                     name: system.name,
+                     ifcClass: system.ifcClass
+                 }
+             END) AS systems,
+             collect(DISTINCT CASE
+                 WHEN wall IS NULL OR p IS NULL THEN NULL
+                 ELSE {
+                     wall: {
+                         id: wall.id,
+                         name: wall.name,
+                         ifcClass: wall.ifcClass,
+                         center: wall.center,
+                         bbox_min: wall.bbox_min,
+                         bbox_max: wall.bbox_max,
+                         axis2: wall.axis2,
+                         layerCount: wall.layerCount,
+                         directionSense: wall.directionSense
+                     },
+                     penetration: properties(p)
+                 }
+             END) AS wall_relations
+        RETURN e {
+            .id,
+            .name,
+            .ifcClass,
+            .shapeType,
+            systems: [item IN systems WHERE item IS NOT NULL],
+            wall_relations: [item IN wall_relations WHERE item IS NOT NULL]
+        } AS task
+        LIMIT 1
+        """
+
+        try:
+            with self.driver.session() as session:
+                record = session.run(query, element_id=element_id).single()
+                if record is None:
+                    return None
+                return record['task']
+        except Exception as exc:
+            self.get_logger().error(
+                f'Failed to query details for selected task {element_id}: {exc}'
+            )
+            return None
+
     def choose_task_from_terminal(self, elements: list[dict[str, Any]]) -> dict[str, Any] | None:
         if not elements:
             return None
@@ -112,7 +169,7 @@ class TaskPublisher(Node):
 
         payload = {
             'count': 1,
-            'element': self._selected_task,
+            'element': self.query_selected_task_details(self._selected_task['id']),
         }
 
         msg = String()
