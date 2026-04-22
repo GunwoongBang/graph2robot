@@ -125,8 +125,7 @@ class TaskPublisher(Node):
                 return record['task']
         except Exception as exc:
             self.get_logger().error(
-                f'Failed to query details for selected task {element_id}: {exc}'
-            )
+                f'Failed to query details for selected task {element_id}: {exc}')
             return None
 
     def choose_task_from_terminal(self, elements: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -145,8 +144,7 @@ class TaskPublisher(Node):
                 if 1 <= selected_index <= len(elements):
                     selected = elements[selected_index - 1]
                     print(
-                        f"Selected task: {selected['name']} | id={selected['id']}"
-                    )
+                        f"Selected task: {selected['name']} | id={selected['id']}")
                     return selected
                 print(f'Please enter a number between 1 and {len(elements)}.')
             except ValueError:
@@ -189,8 +187,6 @@ def main() -> None:
     node = TaskPublisher()
     try:
         node.select_task()
-        if node._selected_task is None:
-            return
         node.publish_task()
         rclpy.spin(node)
     except KeyboardInterrupt:

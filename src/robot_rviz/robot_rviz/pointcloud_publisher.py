@@ -14,14 +14,14 @@ class PointCloudPublisher(Node):
     def __init__(self) -> None:
         super().__init__('pointcloud_publisher')
 
-        package_share = Path(get_package_share_directory('robot_gazebo'))
+        package_share = Path(get_package_share_directory('robot_rviz'))
 
         self.declare_parameter('frame_id', 'world')
         self.declare_parameter('topic', '/cloud')
         self.declare_parameter('publish_rate_hz', 1.0)
 
         self._pcd_path = Path(
-            package_share / 'worlds' / 'cloudGlobal_cleaned_excluded.pcd')
+            package_share / 'models' / 'world' / 'cloudGlobal_cleaned_excluded.pcd')
         self._frame_id = self.get_parameter('frame_id').value
         self._topic = self.get_parameter('topic').value
         self._publish_rate_hz = float(
