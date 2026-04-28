@@ -5,10 +5,9 @@ import os
 import rclpy
 
 from dotenv import load_dotenv
-from pathlib import Path
-from typing import Any
 from neo4j import GraphDatabase
 from rclpy.node import Node
+from typing import Any
 from std_msgs.msg import String
 
 load_dotenv()

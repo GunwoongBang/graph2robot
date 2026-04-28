@@ -1,13 +1,15 @@
 import numpy as np
 import open3d as o3d
+import os
 
-from pathlib import Path
+from ament_index_python.packages import get_package_share_directory
 
 
 def get_top_corner_points(z_tolerance=0.01):
-    pcd_path = Path("pc_models/cloudGlobal_cleaned_excluded.pcd")
+    package_rviz = get_package_share_directory('robot_rviz')
+    world_pcd = package_rviz / "pc_models" / "cloudGlobal_cleaned_excluded.pcd"
 
-    cloud = o3d.io.read_point_cloud(str(pcd_path))
+    cloud = o3d.io.read_point_cloud(str(world_pcd))
     points = np.asarray(cloud.points)
 
     max_z = float(points[:, 2].max())
@@ -43,10 +45,14 @@ def get_top_corner_points(z_tolerance=0.01):
 
     # Add a small z preference so higher points win ties.
     z_weight = 0.1
-    p1_local = pick(x_norm + (1.0 - y_norm) + z_weight * z_norm)          # max x, min y
-    p2_local = pick((1.0 - x_norm) + y_norm + z_weight * z_norm)          # min x, max y
-    p3_local = pick(x_norm + y_norm + z_weight * z_norm)                  # max x, max y
-    p4_local = pick((1.0 - x_norm) + (1.0 - y_norm) + z_weight * z_norm)  # min x, min y
+    p1_local = pick(x_norm + (1.0 - y_norm) + z_weight *
+                    z_norm)          # max x, min y
+    p2_local = pick((1.0 - x_norm) + y_norm + z_weight *
+                    z_norm)          # min x, max y
+    p3_local = pick(x_norm + y_norm + z_weight *
+                    z_norm)                  # max x, max y
+    p4_local = pick((1.0 - x_norm) + (1.0 - y_norm) +
+                    z_weight * z_norm)  # min x, min y
 
     selected = {
         "p1_maxX_minY_maxZ": p1_local,

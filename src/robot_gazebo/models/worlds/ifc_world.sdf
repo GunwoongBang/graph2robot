@@ -1,0 +1,245 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <world name="ifc_world">
+    <!-- <include>
+      <uri>model://ground_plane</uri>
+    </include> -->
+    <include>
+      <uri>model://sun</uri>
+    </include>
+    <physics type="ode">
+      <real_time_update_rate>1000.0</real_time_update_rate>
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1</real_time_factor>
+      <ode>
+        <solver>
+          <type>quick</type>
+          <iters>150</iters>
+          <precon_iters>0</precon_iters>
+          <sor>1.4</sor>
+          <use_dynamic_moi_rescaling>1</use_dynamic_moi_rescaling>
+        </solver>
+        <constraints>
+          <cfm>0.00001</cfm>
+          <erp>0.2</erp>
+          <contact_max_correcting_vel>2000.0</contact_max_correcting_vel>
+          <contact_surface_layer>0.01</contact_surface_layer>
+        </constraints>
+      </ode>
+    </physics>
+    <include>
+      <name>robot</name>
+      <uri>model://robot</uri>
+      <pose>-1.5 3 0.7 3.141592654 0 3.141592654</pose>
+      <static>false</static>
+    </include>
+    <model name="IfcWall_3_Sc93izfEuuDAiaR0_6h3">
+      <static>true</static>
+      <pose>0 0 0 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcWall_3_Sc93izfEuuDAiaR0_6h3.obj</uri>
+              <scale>1 1 1</scale>
+            </mesh>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcWall_3_Sc93izfEuuDAiaR0_6h3.obj</uri>
+              <scale>1 1 1</scale>
+            </mesh>
+          </geometry>
+          <material>
+            <ambient>0.70 0.70 0.70 1</ambient>
+            <diffuse>0.75 0.75 0.75 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="IfcWall_3S3VgMDFLDiPHeIJPk5HIn">
+      <static>true</static>
+      <pose>0 0 0 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcWall_3S3VgMDFLDiPHeIJPk5HIn.obj</uri>
+              <scale>1 1 1</scale>
+            </mesh>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcWall_3S3VgMDFLDiPHeIJPk5HIn.obj</uri>
+              <scale>1 1 1</scale>
+            </mesh>
+          </geometry>
+          <material>
+            <ambient>0.70 0.70 0.70 1</ambient>
+            <diffuse>0.75 0.75 0.75 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="IfcWall_3S3VgMDFLDiPHeIJPk5HTj">
+      <static>true</static>
+      <pose>0 0 0 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcWall_3S3VgMDFLDiPHeIJPk5HTj.obj</uri>
+              <scale>1 1 1</scale>
+            </mesh>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcWall_3S3VgMDFLDiPHeIJPk5HTj.obj</uri>
+              <scale>1 1 1</scale>
+            </mesh>
+          </geometry>
+          <material>
+            <ambient>0.70 0.70 0.70 1</ambient>
+            <diffuse>0.75 0.75 0.75 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="IfcWall_3S3VgMDFLDiPHeIJPk5HSc">
+      <static>true</static>
+      <pose>0 0 0 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcWall_3S3VgMDFLDiPHeIJPk5HSc.obj</uri>
+              <scale>1 1 1</scale>
+            </mesh>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcWall_3S3VgMDFLDiPHeIJPk5HSc.obj</uri>
+              <scale>1 1 1</scale>
+            </mesh>
+          </geometry>
+          <material>
+            <ambient>0.70 0.70 0.70 1</ambient>
+            <diffuse>0.75 0.75 0.75 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="IfcWall_20rBv4HojAY8M3avWLHAgu">
+      <static>true</static>
+      <pose>0 0 0 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcWall_20rBv4HojAY8M3avWLHAgu.obj</uri>
+              <scale>1 1 1</scale>
+            </mesh>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcWall_20rBv4HojAY8M3avWLHAgu.obj</uri>
+              <scale>1 1 1</scale>
+            </mesh>
+          </geometry>
+          <material>
+            <ambient>0.70 0.70 0.70 1</ambient>
+            <diffuse>0.75 0.75 0.75 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="IfcWall_20rBv4HojAY8M3avWLHAad">
+      <static>true</static>
+      <pose>0 0 0 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcWall_20rBv4HojAY8M3avWLHAad.obj</uri>
+              <scale>1 1 1</scale>
+            </mesh>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcWall_20rBv4HojAY8M3avWLHAad.obj</uri>
+              <scale>1 1 1</scale>
+            </mesh>
+          </geometry>
+          <material>
+            <ambient>0.70 0.70 0.70 1</ambient>
+            <diffuse>0.75 0.75 0.75 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="IfcWall_1iDZV_Brn0Z9GW0EFhIoO4">
+      <static>true</static>
+      <pose>0 0 0 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcWall_1iDZV_Brn0Z9GW0EFhIoO4.obj</uri>
+              <scale>1 1 1</scale>
+            </mesh>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcWall_1iDZV_Brn0Z9GW0EFhIoO4.obj</uri>
+              <scale>1 1 1</scale>
+            </mesh>
+          </geometry>
+          <material>
+            <ambient>0.70 0.70 0.70 1</ambient>
+            <diffuse>0.75 0.75 0.75 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="IfcSlab_20rBv4HojAY8M3avWLHAN_">
+      <static>true</static>
+      <pose>0 0 0 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <mesh>
+              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcSlab_20rBv4HojAY8M3avWLHAN_.obj</uri>
+              <scale>1 1 1</scale>
+            </mesh>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcSlab_20rBv4HojAY8M3avWLHAN_.obj</uri>
+              <scale>1 1 1</scale>
+            </mesh>
+          </geometry>
+          <material>
+            <ambient>0.60 0.60 0.65 1</ambient>
+            <diffuse>0.65 0.65 0.70 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+  </world>
+</sdf>
