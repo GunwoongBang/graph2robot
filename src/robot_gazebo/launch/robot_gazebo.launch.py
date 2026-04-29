@@ -7,10 +7,12 @@ from launch.actions import ExecuteProcess
 
 def generate_launch_description() -> LaunchDescription:
     package_share = get_package_share_directory('robot_gazebo')
-    world_sdf = package_share / "models" / "world" / "world.sdf"
+    world_sdf = os.path.join(
+        package_share, "models", "worlds", "ifc_world.sdf")
 
     gazebo_env = os.environ.copy()
-    gazebo_env['GAZEBO_MODEL_PATH'] = os.path.join(package_share, 'models')
+    gazebo_env['GAZEBO_MODEL_PATH'] = os.path.join(
+        package_share, 'models', 'robots')
 
     gazebo = ExecuteProcess(
         cmd=['gazebo', '--verbose', world_sdf],

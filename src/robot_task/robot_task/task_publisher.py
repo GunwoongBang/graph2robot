@@ -9,6 +9,8 @@ from neo4j import GraphDatabase
 from rclpy.node import Node
 from typing import Any
 from std_msgs.msg import String
+import yaml
+import numpy as np
 
 load_dotenv()
 
@@ -45,6 +47,8 @@ class TaskPublisher(Node):
         self._printed_task_names_and_ids = False
         self._warned_no_tasks = False
         self._selected_task: dict[str, Any] | None = None
+        # load transform matrix (IFC -> PCD)
+        self.transform_matrix = self._load_transform_matrix()
 
     def query_mep_elements(self) -> list[dict[str, Any]]:
         if not self.driver:
@@ -127,6 +131,36 @@ class TaskPublisher(Node):
                 f'Failed to query details for selected task {element_id}: {exc}')
             return None
 
+    def _load_transform_matrix(self) -> np.ndarray:
+        ws_root = os.path.abspath(os.path.join(
+            os.path.dirname(__file__), "../../.."))
+        transform_file = os.path.join(
+            ws_root, "src/robot_task/config/ifc_to_pcd_transform.yaml")
+        if not os.path.exists(transform_file):
+            self.get_logger().warning(
+                f'Transform file not found: {transform_file}; using identity.')
+            return np.eye(4, dtype=float)
+        try:
+            with open(transform_file, 'r') as f:
+                cfg = yaml.safe_load(f)
+            mat = np.array(cfg.get('ifc_to_pcd_transform', np.eye(4)))
+            if mat.shape != (4, 4):
+                raise ValueError('transform matrix must be 4x4')
+            return mat.astype(float)
+        except Exception as exc:
+            self.get_logger().error(
+                f'Failed to load transform matrix: {exc}; using identity.')
+            return np.eye(4, dtype=float)
+
+    def _transform_point(self, pt: list[float]) -> list[float]:
+        try:
+            v = np.array([float(pt[0]), float(pt[1]),
+                         float(pt[2]), 1.0], dtype=float)
+            t = self.transform_matrix @ v
+            return [float(t[0]), float(t[1]), float(t[2])]
+        except Exception:
+            return pt
+
     def choose_task_from_terminal(self, elements: list[dict[str, Any]]) -> dict[str, Any] | None:
         if not elements:
             return None
@@ -164,9 +198,28 @@ class TaskPublisher(Node):
         if self._selected_task is None:
             return
 
+        element = self.query_selected_task_details(self._selected_task['id'])
+        if element is None:
+            self.get_logger().error('No details for selected task; abort publish.')
+            return
+
+        # Transform wall coordinates if present
+        if 'wall_relations' in element and element['wall_relations']:
+            for rel in element['wall_relations']:
+                wall = rel.get('wall')
+                if isinstance(wall, dict):
+                    for key in ('center', 'bbox_min', 'bbox_max'):
+                        if key in wall and isinstance(wall[key], (list, tuple)) and len(wall[key]) >= 3:
+                            wall[key] = self._transform_point(wall[key])
+                penetration = rel.get('penetration')
+                if isinstance(penetration, dict):
+                    c = penetration.get('center')
+                    if isinstance(c, (list, tuple)) and len(c) >= 3:
+                        penetration['center'] = self._transform_point(c)
+
         payload = {
             'count': 1,
-            'element': self.query_selected_task_details(self._selected_task['id']),
+            'element': element,
         }
 
         msg = String()

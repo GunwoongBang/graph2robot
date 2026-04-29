@@ -73,19 +73,19 @@ def main():
             o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=2000, relative_fitness=1e-7, relative_rmse=1e-7))
         current_transformation = icp_result.transformation
 
-    # --- SUPERIOR Z-AXIS ALIGNMENT FIX ---
-    # Since IFC walls lack tops/bottoms, Point-to-Plane slides them loosely along the Z-axis.
-    # We forcefully snap the Z-axis by aligning the TOP of the IFC walls to the TOP of the PCD walls.
+    # # --- SUPERIOR Z-AXIS ALIGNMENT FIX ---
+    # # Since IFC walls lack tops/bottoms, Point-to-Plane slides them loosely along the Z-axis.
+    # # We forcefully snap the Z-axis by aligning the TOP of the IFC walls to the TOP of the PCD walls.
 
-    source_points_transformed = np.asarray(
-        source_pcd.points) @ current_transformation[:3, :3].T + current_transformation[:3, 3]
-    target_points = np.asarray(target_pcd.points)
+    # source_points_transformed = np.asarray(
+    #     source_pcd.points) @ current_transformation[:3, :3].T + current_transformation[:3, 3]
+    # target_points = np.asarray(target_pcd.points)
 
-    # Calculate difference between the highest points
-    z_diff = target_points[:, 2].max() - source_points_transformed[:, 2].max()
+    # # Calculate difference between the highest points
+    # z_diff = target_points[:, 2].max() - source_points_transformed[:, 2].max()
 
-    # Apply raw Z translation correction to the transformation matrix
-    # current_transformation[2, 3] += z_diff
+    # # Apply raw Z translation correction to the transformation matrix
+    # # current_transformation[2, 3] += z_diff
 
     print("Final Transformation Matrix with Z-Axis Ceiling Lock:")
     print(current_transformation)

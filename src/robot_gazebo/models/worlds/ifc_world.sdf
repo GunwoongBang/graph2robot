@@ -29,7 +29,7 @@
     </physics>
     <include>
       <name>robot</name>
-      <uri>model://robot</uri>
+      <uri>model://yn</uri>
       <pose>-1.5 3 0.7 3.141592654 0 3.141592654</pose>
       <static>false</static>
     </include>
@@ -40,7 +40,7 @@
         <collision name="collision">
           <geometry>
             <mesh>
-              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcWall_3_Sc93izfEuuDAiaR0_6h3.obj</uri>
+              <uri>src/robot_gazebo/models/worlds/meshes/IfcWall_3_Sc93izfEuuDAiaR0_6h3.obj</uri>
               <scale>1 1 1</scale>
             </mesh>
           </geometry>
@@ -48,7 +48,7 @@
         <visual name="visual">
           <geometry>
             <mesh>
-              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcWall_3_Sc93izfEuuDAiaR0_6h3.obj</uri>
+              <uri>src/robot_gazebo/models/worlds/meshes/IfcWall_3_Sc93izfEuuDAiaR0_6h3.obj</uri>
               <scale>1 1 1</scale>
             </mesh>
           </geometry>
@@ -66,7 +66,7 @@
         <collision name="collision">
           <geometry>
             <mesh>
-              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcWall_3S3VgMDFLDiPHeIJPk5HIn.obj</uri>
+              <uri>src/robot_gazebo/models/worlds/meshes/IfcWall_3S3VgMDFLDiPHeIJPk5HIn.obj</uri>
               <scale>1 1 1</scale>
             </mesh>
           </geometry>
@@ -74,7 +74,7 @@
         <visual name="visual">
           <geometry>
             <mesh>
-              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcWall_3S3VgMDFLDiPHeIJPk5HIn.obj</uri>
+              <uri>src/robot_gazebo/models/worlds/meshes/IfcWall_3S3VgMDFLDiPHeIJPk5HIn.obj</uri>
               <scale>1 1 1</scale>
             </mesh>
           </geometry>
@@ -92,7 +92,7 @@
         <collision name="collision">
           <geometry>
             <mesh>
-              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcWall_3S3VgMDFLDiPHeIJPk5HTj.obj</uri>
+              <uri>src/robot_gazebo/models/worlds/meshes/IfcWall_3S3VgMDFLDiPHeIJPk5HTj.obj</uri>
               <scale>1 1 1</scale>
             </mesh>
           </geometry>
@@ -100,7 +100,7 @@
         <visual name="visual">
           <geometry>
             <mesh>
-              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcWall_3S3VgMDFLDiPHeIJPk5HTj.obj</uri>
+              <uri>src/robot_gazebo/models/worlds/meshes/IfcWall_3S3VgMDFLDiPHeIJPk5HTj.obj</uri>
               <scale>1 1 1</scale>
             </mesh>
           </geometry>
@@ -118,7 +118,7 @@
         <collision name="collision">
           <geometry>
             <mesh>
-              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcWall_3S3VgMDFLDiPHeIJPk5HSc.obj</uri>
+              <uri>src/robot_gazebo/models/worlds/meshes/IfcWall_3S3VgMDFLDiPHeIJPk5HSc.obj</uri>
               <scale>1 1 1</scale>
             </mesh>
           </geometry>
@@ -126,7 +126,7 @@
         <visual name="visual">
           <geometry>
             <mesh>
-              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcWall_3S3VgMDFLDiPHeIJPk5HSc.obj</uri>
+              <uri>src/robot_gazebo/models/worlds/meshes/IfcWall_3S3VgMDFLDiPHeIJPk5HSc.obj</uri>
               <scale>1 1 1</scale>
             </mesh>
           </geometry>
@@ -144,7 +144,7 @@
         <collision name="collision">
           <geometry>
             <mesh>
-              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcWall_20rBv4HojAY8M3avWLHAgu.obj</uri>
+              <uri>src/robot_gazebo/models/worlds/meshes/IfcWall_20rBv4HojAY8M3avWLHAgu.obj</uri>
               <scale>1 1 1</scale>
             </mesh>
           </geometry>
@@ -152,7 +152,7 @@
         <visual name="visual">
           <geometry>
             <mesh>
-              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcWall_20rBv4HojAY8M3avWLHAgu.obj</uri>
+              <uri>src/robot_gazebo/models/worlds/meshes/IfcWall_20rBv4HojAY8M3avWLHAgu.obj</uri>
               <scale>1 1 1</scale>
             </mesh>
           </geometry>
@@ -170,7 +170,7 @@
         <collision name="collision">
           <geometry>
             <mesh>
-              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcWall_20rBv4HojAY8M3avWLHAad.obj</uri>
+              <uri>src/robot_gazebo/models/worlds/meshes/IfcWall_20rBv4HojAY8M3avWLHAad.obj</uri>
               <scale>1 1 1</scale>
             </mesh>
           </geometry>
@@ -178,7 +178,7 @@
         <visual name="visual">
           <geometry>
             <mesh>
-              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcWall_20rBv4HojAY8M3avWLHAad.obj</uri>
+              <uri>src/robot_gazebo/models/worlds/meshes/IfcWall_20rBv4HojAY8M3avWLHAad.obj</uri>
               <scale>1 1 1</scale>
             </mesh>
           </geometry>
@@ -196,7 +196,7 @@
         <collision name="collision">
           <geometry>
             <mesh>
-              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcWall_1iDZV_Brn0Z9GW0EFhIoO4.obj</uri>
+              <uri>src/robot_gazebo/models/worlds/meshes/IfcWall_1iDZV_Brn0Z9GW0EFhIoO4.obj</uri>
               <scale>1 1 1</scale>
             </mesh>
           </geometry>
@@ -204,7 +204,7 @@
         <visual name="visual">
           <geometry>
             <mesh>
-              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcWall_1iDZV_Brn0Z9GW0EFhIoO4.obj</uri>
+              <uri>src/robot_gazebo/models/worlds/meshes/IfcWall_1iDZV_Brn0Z9GW0EFhIoO4.obj</uri>
               <scale>1 1 1</scale>
             </mesh>
           </geometry>
@@ -222,7 +222,7 @@
         <collision name="collision">
           <geometry>
             <mesh>
-              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcSlab_20rBv4HojAY8M3avWLHAN_.obj</uri>
+              <uri>src/robot_gazebo/models/worlds/meshes/IfcSlab_20rBv4HojAY8M3avWLHAN_.obj</uri>
               <scale>1 1 1</scale>
             </mesh>
           </geometry>
@@ -230,7 +230,7 @@
         <visual name="visual">
           <geometry>
             <mesh>
-              <uri>src/robot_gazebo/worlds/ifc_world_meshes/IfcSlab_20rBv4HojAY8M3avWLHAN_.obj</uri>
+              <uri>src/robot_gazebo/models/worlds/meshes/IfcSlab_20rBv4HojAY8M3avWLHAN_.obj</uri>
               <scale>1 1 1</scale>
             </mesh>
           </geometry>
