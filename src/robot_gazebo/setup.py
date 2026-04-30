@@ -26,9 +26,54 @@ setup(
             'models/worlds/meshes/IfcWall_20rBv4HojAY8M3avWLHAad.obj',
             'models/worlds/meshes/IfcWall_20rBv4HojAY8M3avWLHAgu.obj',
         ]),
+        ('share/' + package_name + '/models/robots/husky', [
+            'models/robots/husky/husky.urdf',
+            'models/robots/husky/model.config',
+        ]),
+        ('share/' + package_name + '/models/robots/husky/meshes', [
+            'models/robots/husky/meshes/base_link.stl',
+            'models/robots/husky/meshes/bumper.stl',
+            'models/robots/husky/meshes/top_plate.stl',
+            'models/robots/husky/meshes/user_rail.stl',
+            'models/robots/husky/meshes/wheel.stl',
+        ]),
+        ('share/' + package_name + '/models/robots/husky5e', [
+            'models/robots/husky5e/husky5e.urdf',
+            'models/robots/husky5e/model.config',
+        ]),
+        # ('share/' + package_name + '/models/robots/ur5e', [
+        #     'models/robots/ur5e/ur5e.xacro',
+        # ]),
+        # ('share/' + package_name + '/models/robots/ur5e/config', [
+        #     'models/robots/ur5e/config/default_kinematics.yaml',
+        #     'models/robots/ur5e/config/joint_limits.yaml',
+        #     'models/robots/ur5e/config/physical_parameters.yaml',
+        #     'models/robots/ur5e/config/visual_parameters.yaml',
+        # ]),
+        # ('share/' + package_name + '/models/robots/ur5e/inc', [
+        #     'models/robots/ur5e/inc/ur5e_macro.xacro',
+        # ]),
+        ('share/' + package_name + '/models/robots/ur5e/meshes/collision', [
+            'models/robots/ur5e/meshes/collision/base.stl',
+            'models/robots/ur5e/meshes/collision/forearm.stl',
+            'models/robots/ur5e/meshes/collision/shoulder.stl',
+            'models/robots/ur5e/meshes/collision/upperarm.stl',
+            'models/robots/ur5e/meshes/collision/wrist1.stl',
+            'models/robots/ur5e/meshes/collision/wrist2.stl',
+            'models/robots/ur5e/meshes/collision/wrist3.stl',
+        ]),
+        ('share/' + package_name + '/models/robots/ur5e/meshes/visual', [
+            'models/robots/ur5e/meshes/visual/base.dae',
+            'models/robots/ur5e/meshes/visual/forearm.dae',
+            'models/robots/ur5e/meshes/visual/shoulder.dae',
+            'models/robots/ur5e/meshes/visual/upperarm.dae',
+            'models/robots/ur5e/meshes/visual/wrist1.dae',
+            'models/robots/ur5e/meshes/visual/wrist2.dae',
+            'models/robots/ur5e/meshes/visual/wrist3.dae',
+        ]),
         ('share/' + package_name + '/models/robots/yn', [
-            'models/robots/yn/model.config',
             'models/robots/yn/robot.sdf',
+            'models/robots/yn/model.config',
         ]),
         ('share/' + package_name + '/models/robots/yn/meshes/DAE/', [
             'models/robots/yn/meshes/DAE/base_link.dae',
