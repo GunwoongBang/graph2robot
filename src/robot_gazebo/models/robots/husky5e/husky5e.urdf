@@ -298,7 +298,7 @@
   <gazebo reference="top_plate_link">
     <material>Gazebo/Yellow</material>
   </gazebo>
-  <link name="robot_plate_link">
+  <link name="ur_plate_link">
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
@@ -318,12 +318,12 @@
       <inertia ixx="0.013366666666666666" ixy="0" ixz="0" iyy="0.025116666666666667" iyz="0" izz="0.0385" />
     </inertial>
   </link>
-  <joint name="robot_plate_joint" type="fixed">
+  <joint name="ur_plate_joint" type="fixed">
     <origin rpy="0 0 0" xyz="0 0 0.245" />
     <parent link="base_link" />
-    <child link="robot_plate_link" />
+    <child link="ur_plate_link" />
   </joint>
-  <gazebo reference="robot_plate_link">
+  <gazebo reference="ur_plate_link">
     <material>Gazebo/Yellow</material>
   </gazebo>
   <link name="user_rail_link">
@@ -932,7 +932,7 @@
   <!-- base_joint fixes base_link to the environment -->
   <joint name="arm_mount_joint" type="fixed">
     <origin xyz="-0.105 0.0 0.0" rpy="0 0 3.14159"/>
-    <parent link="robot_plate_link"/>
+    <parent link="ur_plate_link"/>
     <child link="ur_arm_base_link"/>
   </joint>
   <!-- joints - main serial chain -->

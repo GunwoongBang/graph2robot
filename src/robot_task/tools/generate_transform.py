@@ -42,7 +42,7 @@ def main():
     pcd_file = os.path.join(
         ws_root, "src/robot_rviz/models/cloudGlobal_cleaned_excluded.pcd")
     output_transform_file = os.path.join(
-        ws_root, "src/robot_task/config/ifc_to_pcd_transform.yaml")
+        ws_root, "src/robot_task/config/transform_matrix.yaml")
 
     source_pcd = load_ifc_point_cloud(ifc_mesh_dir)
     target_pcd = o3d.io.read_point_cloud(pcd_file)
@@ -91,9 +91,9 @@ def main():
     print(current_transformation)
 
     config = {
-        "ifc_to_pcd_transform": current_transformation.tolist(),
+        "matrix": current_transformation.tolist(),
         "fitness": float(icp_result.fitness),
-        "inlier_rmse": float(icp_result.inlier_rmse)
+        "rmse": float(icp_result.inlier_rmse)
     }
 
     with open(output_transform_file, "w") as f:

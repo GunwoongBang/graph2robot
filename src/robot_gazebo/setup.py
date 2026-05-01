@@ -41,18 +41,6 @@ setup(
             'models/robots/husky5e/husky5e.urdf',
             'models/robots/husky5e/model.config',
         ]),
-        # ('share/' + package_name + '/models/robots/ur5e', [
-        #     'models/robots/ur5e/ur5e.xacro',
-        # ]),
-        # ('share/' + package_name + '/models/robots/ur5e/config', [
-        #     'models/robots/ur5e/config/default_kinematics.yaml',
-        #     'models/robots/ur5e/config/joint_limits.yaml',
-        #     'models/robots/ur5e/config/physical_parameters.yaml',
-        #     'models/robots/ur5e/config/visual_parameters.yaml',
-        # ]),
-        # ('share/' + package_name + '/models/robots/ur5e/inc', [
-        #     'models/robots/ur5e/inc/ur5e_macro.xacro',
-        # ]),
         ('share/' + package_name + '/models/robots/ur5e/meshes/collision', [
             'models/robots/ur5e/meshes/collision/base.stl',
             'models/robots/ur5e/meshes/collision/forearm.stl',
