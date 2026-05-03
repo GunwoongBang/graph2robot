@@ -6,14 +6,14 @@ def generate_launch_description():
     return LaunchDescription([
         Node(
             package='robot_task',
-            executable='task_publisher',
-            name='task_publisher',
+            executable='graph_client',
+            name='graph_client',
             output='screen',
         ),
         Node(
             package='robot_task',
-            executable='matrix_publisher',
-            name='matrix_publisher',
+            executable='task_manager',
+            name='task_manager',
             output='screen',
         ),
     ])

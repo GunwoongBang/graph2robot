@@ -17,11 +17,11 @@ setup(
             'config/transform_matrix.yaml',
         ]),
     ],
-    install_requires=['setuptools', 'neo4j'],
+    install_requires=['setuptools'],
     zip_safe=True,
     maintainer='gunwoong',
     maintainer_email='gw.bang@tum.de',
-    description='TODO: Package description',
+    description='Task management for robot simulation',
     license='Apache-2.0',
     extras_require={
         'test': [
@@ -30,8 +30,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'task_publisher=robot_task.task_publisher:main',
-            'matrix_publisher=robot_task.matrix_publisher:main',
+            'graph_client=robot_task.graph_client:main',
+            'task_manager=robot_task.task_manager:main',
         ],
     },
 )

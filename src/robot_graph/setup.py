@@ -11,11 +11,11 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
     ],
-    install_requires=['setuptools'],
+    install_requires=['setuptools', 'neo4j', 'python-dotenv'],
     zip_safe=True,
     maintainer='gunwoong',
     maintainer_email='gw.bang@tum.de',
-    description='TODO: Package description',
+    description='Graph management for robot simulation',
     license='Apache-2.0',
     extras_require={
         'test': [
@@ -24,6 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'graph_server=robot_graph.graph_server:main',
         ],
     },
 )
