@@ -1,8 +1,8 @@
 import json
-import struct
 import numpy as np
 import rclpy
 
+from interactive_markers.interactive_marker_server import InteractiveMarkerServer
 from rclpy.node import Node
 from rclpy.qos import (
     DurabilityPolicy,
@@ -10,22 +10,24 @@ from rclpy.qos import (
     QoSProfile,
     ReliabilityPolicy,
 )
-from sensor_msgs.msg import PointCloud2, PointField
+from sensor_msgs.msg import PointCloud2
 from sensor_msgs_py import point_cloud2
 from std_msgs.msg import String
-from visualization_msgs.msg import Marker, MarkerArray
+from visualization_msgs.msg import (
+    InteractiveMarker,
+    InteractiveMarkerControl,
+    InteractiveMarkerFeedback,
+    Marker,
+)
 
 
 class TaskSubscriber(Node):
-    """Highlights MEP element centers in the point cloud and labels them in RViz."""
-
     def __init__(self) -> None:
         super().__init__('task_subscriber')
 
-        self.declare_parameter('text_height', 0.1)
-        self.declare_parameter('text_z_offset', 0.1)
-        self._text_height = float(self.get_parameter('text_height').value)
-        self._text_z_offset = float(self.get_parameter('text_z_offset').value)
+        self.declare_parameter('marker_diameter', 0.3)
+        self._marker_diameter = float(
+            self.get_parameter('marker_diameter').value)
 
         latched_qos = QoSProfile(
             depth=1,
@@ -41,15 +43,14 @@ class TaskSubscriber(Node):
         self._matrix_sub = self.create_subscription(
             String, '/matrix', self._on_matrix, latched_qos)
 
-        self._highlight_pub = self.create_publisher(
-            PointCloud2, '/highlighted_points', latched_qos)
-        self._labels_pub = self.create_publisher(
-            MarkerArray, '/element_labels', latched_qos)
+        self._marker_server = InteractiveMarkerServer(self, 'task')
 
         self._cloud: np.ndarray | None = None
         self._frame_id: str = 'world'
         self._elements: list[dict] | None = None
         self._matrix: np.ndarray | None = None
+        # Map marker name (= element id) -> full element dict, for click handling.
+        self._element_index: dict[str, dict] = {}
 
     def _on_cloud(self, msg: PointCloud2) -> None:
         if self._cloud is not None:
@@ -96,15 +97,17 @@ class TaskSubscriber(Node):
             self.get_logger().warn('Empty point cloud; skipping.')
             return
 
-        red_points: list[tuple[float, float, float]] = []
-        markers: list[Marker] = []
+        self._marker_server.clear()
+        self._element_index.clear()
 
-        for idx, element in enumerate(self._elements):
+        placed = 0
+        for element in self._elements:
             center = element.get('center')
-            if center is None or len(center) != 3:
+            element_id = element.get('id')
+            if center is None or len(center) != 3 or not element_id:
                 continue
 
-            # IFC centers from Neo4j are in millimeters; matrix expects meters.
+            # Unit conversion from mm (ifc) to m (point cloud)
             homog = np.array(
                 [center[0] / 1000.0, center[1] / 1000.0, center[2] / 1000.0, 1.0], dtype=float)
             transformed = self._matrix @ homog
@@ -115,70 +118,57 @@ class TaskSubscriber(Node):
             dists_sq = np.sum(diffs * diffs, axis=1)
             closest_idx = int(np.argmin(dists_sq))
             cx, cy, cz = self._cloud[closest_idx]
-            red_points.append((float(cx), float(cy), float(cz)))
 
-            markers.append(self._build_label_marker(
-                idx, element, float(cx), float(cy), float(cz)))
+            int_marker = self._build_interactive_marker(
+                element, float(cx), float(cy), float(cz))
+            self._element_index[element_id] = element
+            self._marker_server.insert(
+                int_marker, feedback_callback=self._on_marker_feedback)
+            placed += 1
 
-        cloud_msg = self._build_red_cloud(red_points)
-        self._highlight_pub.publish(cloud_msg)
-        self._labels_pub.publish(MarkerArray(markers=markers))
+        self._marker_server.applyChanges()
         self.get_logger().info(
-            f'Highlighted {len(red_points)} points and published {len(markers)} labels.')
+            f'Placed {placed} interactive markers on /task/update.')
 
-    def _build_label_marker(self, idx: int, element: dict,
-                            x: float, y: float, z: float) -> Marker:
-        marker = Marker()
-        marker.header.frame_id = self._frame_id
-        marker.header.stamp = self.get_clock().now().to_msg()
-        marker.ns = 'element_labels'
-        marker.id = idx
-        marker.type = Marker.TEXT_VIEW_FACING
-        marker.action = Marker.ADD
-        marker.pose.position.x = x
-        marker.pose.position.y = y
-        marker.pose.position.z = z + self._text_z_offset
-        marker.pose.orientation.w = 1.0
-        marker.scale.z = self._text_height
-        marker.color.r = 1.0
-        marker.color.g = 1.0
-        marker.color.b = 1.0
-        marker.color.a = 1.0
-        marker.text = f"{element.get('name', '')}\nid={element.get('id', '')}"
-        return marker
+    def _build_interactive_marker(
+            self, element: dict, x: float, y: float, z: float) -> InteractiveMarker:
+        sphere = Marker()
+        sphere.type = Marker.SPHERE
+        sphere.scale.x = self._marker_diameter
+        sphere.scale.y = self._marker_diameter
+        sphere.scale.z = self._marker_diameter
+        sphere.color.r = 1.0
+        sphere.color.g = 0.0
+        sphere.color.b = 0.0
+        sphere.color.a = 1.0
 
-    def _build_red_cloud(self, points: list[tuple[float, float, float]]) -> PointCloud2:
-        # Pack (255, 0, 0) into a float per RViz's legacy 'rgb' field convention.
-        rgb_packed = struct.unpack('<f', struct.pack(
-            '<I', (255 << 16) | (0 << 8) | 0))[0]
+        control = InteractiveMarkerControl()
+        control.always_visible = True
+        control.interaction_mode = InteractiveMarkerControl.BUTTON
+        control.markers.append(sphere)
 
-        buffer = bytearray(len(points) * 16)
-        offset = 0
-        for x, y, z in points:
-            struct.pack_into('<ffff', buffer, offset, x, y, z, rgb_packed)
-            offset += 16
+        int_marker = InteractiveMarker()
+        int_marker.header.frame_id = self._frame_id
+        int_marker.name = element['id']
+        int_marker.description = element.get('name', '')
+        int_marker.pose.position.x = x
+        int_marker.pose.position.y = y
+        int_marker.pose.position.z = z
+        int_marker.pose.orientation.w = 1.0
+        int_marker.scale = self._marker_diameter
+        int_marker.controls.append(control)
+        return int_marker
 
-        msg = PointCloud2()
-        msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = self._frame_id
-        msg.height = 1
-        msg.width = len(points)
-        msg.is_bigendian = False
-        msg.is_dense = True
-        msg.point_step = 16
-        msg.row_step = msg.point_step * len(points)
-        msg.fields = [
-            PointField(name='x', offset=0,
-                       datatype=PointField.FLOAT32, count=1),
-            PointField(name='y', offset=4,
-                       datatype=PointField.FLOAT32, count=1),
-            PointField(name='z', offset=8,
-                       datatype=PointField.FLOAT32, count=1),
-            PointField(name='rgb', offset=12,
-                       datatype=PointField.FLOAT32, count=1),
-        ]
-        msg.data = bytes(buffer)
-        return msg
+    def _on_marker_feedback(self, feedback: InteractiveMarkerFeedback) -> None:
+        if feedback.event_type != InteractiveMarkerFeedback.BUTTON_CLICK:
+            return
+        element = self._element_index.get(feedback.marker_name)
+        if element is None:
+            self.get_logger().warn(
+                f'Click on unknown marker: {feedback.marker_name}')
+            return
+        self.get_logger().info(
+            f"Clicked element: name='{element.get('name', '')}' id={element['id']} ")
 
 
 def main() -> None:

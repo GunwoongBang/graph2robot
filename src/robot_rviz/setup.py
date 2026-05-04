@@ -14,7 +14,10 @@ setup(
          [
              'launch/robot_rviz.launch.py',
          ]),
-        ('share/' + package_name + '/config', ['config/pointcloud.rviz']),
+        ('share/' + package_name + '/config',
+         [
+             'config/pointcloud.rviz',
+         ]),
         ('share/' + package_name + '/models', [
             'models/cloudGlobal_cleaned_excluded.pcd',
             'models/cloudGlobal_cleaned_excluded.csv',

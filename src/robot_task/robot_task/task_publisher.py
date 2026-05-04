@@ -16,9 +16,9 @@ from typing import Any
 from std_msgs.msg import String
 
 
-class TaskManager(Node):
+class TaskPublisher(Node):
     def __init__(self) -> None:
-        super().__init__('task_manager')
+        super().__init__('task_publisher')
 
         latched_qos = QoSProfile(
             depth=1,
@@ -44,7 +44,7 @@ class TaskManager(Node):
             self.get_logger().error(f'Invalid /mep_elements JSON: {exc}')
             return
         self.get_logger().info(
-            f'Received {len(self._mep_elements)} MEP elements from graph_client.')
+            f'Received {len(self._mep_elements)} MEP elements on /mep_elements.')
         self.publish_task()
 
     def _load_transform_matrix(self) -> np.ndarray:
@@ -95,7 +95,7 @@ class TaskManager(Node):
 
 def main() -> None:
     rclpy.init()
-    node = TaskManager()
+    node = TaskPublisher()
     try:
         node.publish_matrix()
         rclpy.spin(node)

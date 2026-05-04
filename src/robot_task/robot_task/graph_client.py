@@ -20,15 +20,14 @@ class GraphClient(Node):
         self._client = self.create_client(
             Trigger, '/graph/list_mep_elements')
 
-        # Latched-style QoS so late subscribers (e.g. task_publisher)
-        # still receive the most recent /mep_elements payload.
         latched_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
         )
-        self._publisher = self.create_publisher(
+
+        self._elements_pub = self.create_publisher(
             String, '/mep_elements', latched_qos)
 
     def request_mep_elements(self, wait_timeout_sec: float = 10.0) -> None:
@@ -61,7 +60,7 @@ class GraphClient(Node):
 
         msg = String()
         msg.data = json.dumps(elements)
-        self._publisher.publish(msg)
+        self._elements_pub.publish(msg)
         self.get_logger().info(
             f'Published {len(elements)} MEP elements on /mep_elements.')
 
