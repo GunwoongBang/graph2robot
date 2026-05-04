@@ -39,10 +39,15 @@ class GraphServer(Node):
                 self.get_logger().error(
                     f'Failed to connect to Neo4j at {uri}: {exc}.')
 
+        # Currently, the node only provides one service to list MEP elements.
+        # In the future, there could be more services for different types of elements.
         self._mep_elements_srv = self.create_service(
             Trigger, '/graph/list_mep_elements', self._handle_list_mep_elements)
         self.get_logger().info(
             'Service ready: /graph/list_mep_elements (std_srvs/Trigger)')
+
+        # TODO: Add more services for updating the graph
+        # self._update_graph_srv = self.create_service(...)
 
     def _handle_list_mep_elements(
             self, _request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:

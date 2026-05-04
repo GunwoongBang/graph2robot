@@ -15,6 +15,10 @@ setup(
              'launch/robot_rviz.launch.py',
          ]),
         ('share/' + package_name + '/config', ['config/pointcloud.rviz']),
+        ('share/' + package_name + '/models', [
+            'models/cloudGlobal_cleaned_excluded.pcd',
+            'models/cloudGlobal_cleaned_excluded.csv',
+        ]),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -30,6 +34,7 @@ setup(
     entry_points={
         'console_scripts': [
             'pointcloud_publisher=robot_rviz.pointcloud_publisher:main',
+            'task_subscriber=robot_rviz.task_subscriber:main',
         ],
     },
 )

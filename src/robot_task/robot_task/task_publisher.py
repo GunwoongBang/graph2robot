@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import json
 import os
 import yaml
@@ -22,8 +20,6 @@ class TaskManager(Node):
     def __init__(self) -> None:
         super().__init__('task_manager')
 
-        # Match graph_client's /mep_elements QoS so we still receive the latest
-        # payload even when started after graph_client.
         latched_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.RELIABLE,
@@ -33,10 +29,23 @@ class TaskManager(Node):
 
         self._elements_sub = self.create_subscription(
             String, '/mep_elements', self._handle_mep_elements, latched_qos)
-        self._matrix_pub = self.create_publisher(String, '/matrix', 10)
+        self._elements_pub = self.create_publisher(
+            String, '/task', latched_qos)
+        self._matrix_pub = self.create_publisher(
+            String, '/matrix', latched_qos)
 
         self._mep_elements: list[dict[str, Any]] | None = None
         self._transform_matrix = self._load_transform_matrix()
+
+    def _handle_mep_elements(self, msg: String) -> None:
+        try:
+            self._mep_elements = json.loads(msg.data)
+        except json.JSONDecodeError as exc:
+            self.get_logger().error(f'Invalid /mep_elements JSON: {exc}')
+            return
+        self.get_logger().info(
+            f'Received {len(self._mep_elements)} MEP elements from graph_client.')
+        self.publish_task()
 
     def _load_transform_matrix(self) -> np.ndarray:
         transform_file = os.path.join(
@@ -60,15 +69,6 @@ class TaskManager(Node):
                 f'Failed to load transform matrix: {exc}; using identity.')
             return np.eye(4, dtype=float)
 
-    def _handle_mep_elements(self, msg: String) -> None:
-        try:
-            self._mep_elements = json.loads(msg.data)
-        except json.JSONDecodeError as exc:
-            self.get_logger().error(f'Invalid /mep_elements JSON: {exc}')
-            return
-        self.get_logger().info(
-            f'Received {len(self._mep_elements)} MEP elements from graph_client.')
-
     def publish_matrix(self) -> None:
         payload = {
             'count': 1,
@@ -80,9 +80,17 @@ class TaskManager(Node):
         self.get_logger().info('Published transformation matrix.')
 
     def publish_task(self) -> None:
+        if not self._mep_elements:
+            return
         payload = {
-
+            'count': len(self._mep_elements),
+            'elements': self._mep_elements,
         }
+        msg = String()
+        msg.data = json.dumps(payload)
+        self._elements_pub.publish(msg)
+        self.get_logger().info(
+            f'Published {len(self._mep_elements)} MEP elements on /task.')
 
 
 def main() -> None:
