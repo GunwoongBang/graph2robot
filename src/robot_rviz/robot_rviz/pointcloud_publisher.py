@@ -75,7 +75,7 @@ class PointCloudPublisher(Node):
         msg.width = len(xyz)
         msg.is_bigendian = False
         msg.is_dense = True
-        msg.point_step = 12
+        msg.point_step = 12  # 3 x float32 = 12 bytes
         msg.row_step = msg.point_step * len(xyz)
         msg.fields = [
             PointField(name='x', offset=0,

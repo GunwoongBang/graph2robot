@@ -1,4 +1,4 @@
-<?xml version="1.0" ?>
+<?xml version="1.0"?>
 <sdf version="1.6">
   <world name="ifc_world">
     <!-- <include>
@@ -27,15 +27,6 @@
         </constraints>
       </ode>
     </physics>
-    <include>
-      <name>robot</name>
-      <!-- <uri>model://yn</uri> -->
-      <!-- <uri>model://husky</uri> -->
-      <uri>model://husky5e</uri>
-      <!-- <pose model="yn">-1.5 3 0.7 3.141592654 0 3.141592654</pose>   -->
-      <pose>-1.5 3 0 0 0 0</pose>
-      <static>false</static>
-    </include>
     <model name="IfcWall_3_Sc93izfEuuDAiaR0_6h3">
       <static>true</static>
       <pose>0 0 0 0 0 0</pose>

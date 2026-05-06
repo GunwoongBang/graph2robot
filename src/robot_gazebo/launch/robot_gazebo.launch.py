@@ -8,7 +8,8 @@ import yaml
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import ExecuteProcess
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 
 def _decompose_matrix(matrix: list[list[float]]) -> tuple[float, float, float, float, float, float]:
@@ -73,14 +74,24 @@ def generate_launch_description() -> LaunchDescription:
     pose_str = f'{x:.6f} {y:.6f} {z:.6f} {roll:.6f} {pitch:.6f} {yaw:.6f}'
     world_sdf = _patch_ifc_poses(source_sdf, pose_str)
 
-    gazebo_env = os.environ.copy()
-    gazebo_env['GAZEBO_MODEL_PATH'] = os.path.join(
-        gazebo_share, 'models', 'robots')
+    # GAZEBO_MODEL_PATH lets <include><uri>model://...</uri></include> resolve our robots.
+    os.environ['GAZEBO_MODEL_PATH'] = os.pathsep.join(filter(None, [
+        os.environ.get('GAZEBO_MODEL_PATH', ''),
+        os.path.join(gazebo_share, 'models', 'robots'),
+    ]))
 
-    gazebo = ExecuteProcess(
-        cmd=['gazebo', '--verbose', world_sdf],
-        env=gazebo_env,
-        output='screen',
+    # gazebo_ros's launch wrapper loads gazebo_ros_init + gazebo_ros_factory as
+    # system plugins, providing /spawn_entity, /delete_entity, /set_entity_state.
+    gazebo = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(
+            get_package_share_directory('gazebo_ros'),
+            'launch',
+            'gazebo.launch.py',
+        )),
+        launch_arguments={
+            'world': world_sdf,
+            'verbose': 'true',
+        }.items(),
     )
 
     return LaunchDescription([gazebo])

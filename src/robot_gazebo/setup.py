@@ -37,9 +37,9 @@ setup(
             'models/robots/husky/meshes/user_rail.stl',
             'models/robots/husky/meshes/wheel.stl',
         ]),
-        ('share/' + package_name + '/models/robots/husky5e', [
-            'models/robots/husky5e/husky5e.urdf',
-            'models/robots/husky5e/model.config',
+        ('share/' + package_name + '/models/robots/ur5e', [
+            'models/robots/ur5e/ur5e.urdf',
+            'models/robots/ur5e/model.config',
         ]),
         ('share/' + package_name + '/models/robots/ur5e/meshes/collision', [
             'models/robots/ur5e/meshes/collision/base.stl',
@@ -59,27 +59,28 @@ setup(
             'models/robots/ur5e/meshes/visual/wrist2.dae',
             'models/robots/ur5e/meshes/visual/wrist3.dae',
         ]),
-        ('share/' + package_name + '/models/robots/yn', [
-            'models/robots/yn/robot.sdf',
-            'models/robots/yn/model.config',
-        ]),
-        ('share/' + package_name + '/models/robots/yn/meshes/DAE/', [
-            'models/robots/yn/meshes/DAE/base_link.dae',
-            'models/robots/yn/meshes/DAE/camera_stay.dae',
-            'models/robots/yn/meshes/DAE/camera.dae',
-            'models/robots/yn/meshes/DAE/front_left_sus.dae',
-            'models/robots/yn/meshes/DAE/front_right_sus.dae',
-            'models/robots/yn/meshes/DAE/front_wheel.dae',
-            'models/robots/yn/meshes/DAE/rear_wheel.dae',
-        ]),
-        ('share/' + package_name + '/models/robots/yn/meshes/STL/', [
-            'models/robots/yn/meshes/STL/base_link.stl',
-            'models/robots/yn/meshes/STL/camera.stl',
-            'models/robots/yn/meshes/STL/front_left_sus.stl',
-            'models/robots/yn/meshes/STL/front_right_sus.stl',
-            'models/robots/yn/meshes/STL/front_wheel.stl',
-            'models/robots/yn/meshes/STL/rear_wheel.stl',
-        ]),
+        # === The 'yn' robot is for testing only, now deprecated ===
+        # ('share/' + package_name + '/models/robots/yn', [
+        #     'models/robots/yn/robot.sdf',
+        #     'models/robots/yn/model.config',
+        # ]),
+        # ('share/' + package_name + '/models/robots/yn/meshes/DAE/', [
+        #     'models/robots/yn/meshes/DAE/base_link.dae',
+        #     'models/robots/yn/meshes/DAE/camera_stay.dae',
+        #     'models/robots/yn/meshes/DAE/camera.dae',
+        #     'models/robots/yn/meshes/DAE/front_left_sus.dae',
+        #     'models/robots/yn/meshes/DAE/front_right_sus.dae',
+        #     'models/robots/yn/meshes/DAE/front_wheel.dae',
+        #     'models/robots/yn/meshes/DAE/rear_wheel.dae',
+        # ]),
+        # ('share/' + package_name + '/models/robots/yn/meshes/STL/', [
+        #     'models/robots/yn/meshes/STL/base_link.stl',
+        #     'models/robots/yn/meshes/STL/camera.stl',
+        #     'models/robots/yn/meshes/STL/front_left_sus.stl',
+        #     'models/robots/yn/meshes/STL/front_right_sus.stl',
+        #     'models/robots/yn/meshes/STL/front_wheel.stl',
+        #     'models/robots/yn/meshes/STL/rear_wheel.stl',
+        # ]),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
