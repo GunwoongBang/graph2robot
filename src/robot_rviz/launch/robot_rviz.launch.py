@@ -7,7 +7,7 @@ from launch.actions import ExecuteProcess
 
 def generate_launch_description() -> LaunchDescription:
     package_share = Path(get_package_share_directory('robot_rviz'))
-    rviz_config = package_share / 'config' / 'pointcloud.rviz'
+    rviz_config = package_share / 'config' / 'config.rviz'
 
     pointcloud_node = Node(
         package='robot_rviz',

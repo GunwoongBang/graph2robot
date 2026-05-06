@@ -4,9 +4,9 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import (
     QoSProfile,
+    ReliabilityPolicy,
     DurabilityPolicy,
     HistoryPolicy,
-    ReliabilityPolicy,
 )
 from rclpy.task import Future
 from std_msgs.msg import String
@@ -17,7 +17,7 @@ class GraphClient(Node):
     def __init__(self) -> None:
         super().__init__('graph_client')
 
-        self._client = self.create_client(
+        self._mep_elements_cli = self.create_client(
             Trigger, '/graph/list_mep_elements')
 
         latched_qos = QoSProfile(
@@ -33,11 +33,11 @@ class GraphClient(Node):
     def request_mep_elements(self, wait_timeout_sec: float = 10.0) -> None:
         self.get_logger().info(
             'Waiting for /graph/list_mep_elements service...')
-        if not self._client.wait_for_service(timeout_sec=wait_timeout_sec):
+        if not self._mep_elements_cli.wait_for_service(timeout_sec=wait_timeout_sec):
             self.get_logger().error(
                 f'Service /graph/list_mep_elements not available after {wait_timeout_sec}s; abort.')
             return
-        future = self._client.call_async(Trigger.Request())
+        future = self._mep_elements_cli.call_async(Trigger.Request())
         future.add_done_callback(self._handle_response)
 
     def _handle_response(self, future: Future) -> None:

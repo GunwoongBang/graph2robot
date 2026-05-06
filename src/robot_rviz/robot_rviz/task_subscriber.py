@@ -43,6 +43,11 @@ class TaskSubscriber(Node):
         self._matrix_sub = self.create_subscription(
             String, '/matrix', self._on_matrix, latched_qos)
 
+        self._selected_pub = self.create_publisher(
+            String, '/task/selected_task', latched_qos)
+        self._selected_sub = self.create_subscription(
+            String, '/task/selected_task', self._on_selected_task, latched_qos)
+
         self._marker_server = InteractiveMarkerServer(self, 'task')
 
         self._cloud: np.ndarray | None = None
@@ -51,6 +56,10 @@ class TaskSubscriber(Node):
         self._matrix: np.ndarray | None = None
         # Map marker name (= element id) -> full element dict, for click handling.
         self._element_index: dict[str, dict] = {}
+        # Map element id -> snapped (x, y, z) so we can rebuild markers on selection
+        # without re-running the transform / nearest-neighbor search.
+        self._marker_positions: dict[str, tuple[float, float, float]] = {}
+        self._selected_id: str | None = None
 
     def _on_cloud(self, msg: PointCloud2) -> None:
         if self._cloud is not None:
@@ -61,7 +70,7 @@ class TaskSubscriber(Node):
             [(p[0], p[1], p[2]) for p in pts], dtype=np.float32)
         self._frame_id = msg.header.frame_id
         self.get_logger().info(
-            f'Received cloud with {len(self._cloud)} points (frame_id={self._frame_id}).')
+            f'Received cloud with {len(self._cloud)} points on /cloud (frame_id={self._frame_id}).')
         self._try_process()
 
     def _on_task(self, msg: String) -> None:
@@ -87,7 +96,7 @@ class TaskSubscriber(Node):
                 f'Matrix shape {mat.shape}, expected (4,4).')
             return
         self._matrix = mat
-        self.get_logger().info('Received transform matrix.')
+        self.get_logger().info('Received transform matrix on /matrix.')
         self._try_process()
 
     def _try_process(self) -> None:
@@ -99,8 +108,8 @@ class TaskSubscriber(Node):
 
         self._marker_server.clear()
         self._element_index.clear()
+        self._marker_positions.clear()
 
-        placed = 0
         for element in self._elements:
             center = element.get('center')
             element_id = element.get('id')
@@ -119,27 +128,39 @@ class TaskSubscriber(Node):
             closest_idx = int(np.argmin(dists_sq))
             cx, cy, cz = self._cloud[closest_idx]
 
-            int_marker = self._build_interactive_marker(
-                element, float(cx), float(cy), float(cz))
             self._element_index[element_id] = element
+            self._marker_positions[element_id] = (
+                float(cx), float(cy), float(cz))
+
+        self._redraw_markers()
+        self.get_logger().info(
+            f'Placed {len(self._marker_positions)} interactive markers on /task/update.')
+
+    def _redraw_markers(self) -> None:
+        for element_id, (x, y, z) in self._marker_positions.items():
+            element = self._element_index[element_id]
+            int_marker = self._build_interactive_marker(
+                element, x, y, z, selected=(element_id == self._selected_id))
             self._marker_server.insert(
                 int_marker, feedback_callback=self._on_marker_feedback)
-            placed += 1
-
         self._marker_server.applyChanges()
-        self.get_logger().info(
-            f'Placed {placed} interactive markers on /task/update.')
 
     def _build_interactive_marker(
-            self, element: dict, x: float, y: float, z: float) -> InteractiveMarker:
+            self, element: dict, x: float, y: float, z: float,
+            selected: bool = False) -> InteractiveMarker:
         sphere = Marker()
         sphere.type = Marker.SPHERE
         sphere.scale.x = self._marker_diameter
         sphere.scale.y = self._marker_diameter
         sphere.scale.z = self._marker_diameter
-        sphere.color.r = 1.0
-        sphere.color.g = 0.0
-        sphere.color.b = 0.0
+        if selected:
+            sphere.color.r = 0.0
+            sphere.color.g = 0.0
+            sphere.color.b = 1.0
+        else:
+            sphere.color.r = 1.0
+            sphere.color.g = 0.0
+            sphere.color.b = 0.0
         sphere.color.a = 1.0
 
         control = InteractiveMarkerControl()
@@ -167,8 +188,24 @@ class TaskSubscriber(Node):
             self.get_logger().warn(
                 f'Click on unknown marker: {feedback.marker_name}')
             return
+        msg = String()
+        msg.data = json.dumps({'element': element})
+        self._selected_pub.publish(msg)
         self.get_logger().info(
-            f"Clicked element: name='{element.get('name', '')}' id={element['id']} ")
+            f"Selected element on /task/selected_task: id={element['id']}")
+
+    def _on_selected_task(self, msg: String) -> None:
+        try:
+            payload = json.loads(msg.data)
+        except json.JSONDecodeError as exc:
+            self.get_logger().error(
+                f'Invalid /task/selected_task JSON: {exc}')
+            return
+        new_id = (payload.get('element') or {}).get('id')
+        if new_id == self._selected_id:
+            return
+        self._selected_id = new_id
+        self._redraw_markers()
 
 
 def main() -> None:

@@ -10,14 +10,12 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        ('share/' + package_name + '/launch',
-         [
-             'launch/robot_rviz.launch.py',
-         ]),
-        ('share/' + package_name + '/config',
-         [
-             'config/pointcloud.rviz',
-         ]),
+        ('share/' + package_name + '/launch', [
+            'launch/robot_rviz.launch.py',
+        ]),
+        ('share/' + package_name + '/config', [
+            'config/config.rviz',
+        ]),
         ('share/' + package_name + '/models', [
             'models/cloudGlobal_cleaned_excluded.pcd',
             'models/cloudGlobal_cleaned_excluded.csv',

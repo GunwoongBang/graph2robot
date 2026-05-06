@@ -19,5 +19,5 @@ def generate_launch_description():
 
     return LaunchDescription([
         graph_node,
-        task_node
+        task_node,
     ])
