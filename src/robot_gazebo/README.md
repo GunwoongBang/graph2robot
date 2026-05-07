@@ -45,3 +45,5 @@ ros2 service call /delete_entity gazebo_msgs/srv/DeleteEntity "{name: '<entity_n
 we are going to use these calls to spawn and delete husky5e robot
 + when a task (mep element) is selected, gazebo receives the information and spawn the robot in the drilling position. 
 + But the drilling point needs to be designated considering the drilling point and a wall's orientation, idk
+
+After creating 

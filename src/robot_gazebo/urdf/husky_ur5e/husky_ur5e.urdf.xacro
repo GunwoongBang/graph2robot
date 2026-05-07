@@ -1,0 +1,76 @@
+<?xml version="1.0"?>
+<!--
+  Composite robot: Clearpath A200 (Husky) + UR5e arm mounted on a top plate.
+
+  The two robot xacros stay untouched; this wrapper:
+    * instantiates the a200 chassis (Clearpath modern husky equivalent),
+    * adds a thin "robot_arm_plate" sitting on default_mount,
+    * mounts the UR5e (with prefix=ur_arm_) on top of the plate.
+
+  Generate URDF with:
+    xacro $(ros2 pkg prefix robot_gazebo)/share/robot_gazebo/urdf/husky_ur5e/husky_ur5e.urdf.xacro
+-->
+<robot name="husky_ur5e" xmlns:xacro="http://ros.org/wiki/xacro">
+
+  <!-- ===== Husky A200 (chassis + wheels + ros2_control + gazebo) ===== -->
+  <xacro:include filename="$(find clearpath_platform_description)/urdf/a200/a200.urdf.xacro"/>
+  <xacro:a200/>
+
+  <!-- ===== Robot-arm mounting plate ===== -->
+  <xacro:property name="plate_x" value="0.55"/>
+  <xacro:property name="plate_y" value="0.40"/>
+  <xacro:property name="plate_z" value="0.01"/>
+
+  <link name="robot_arm_plate">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="${plate_x} ${plate_y} ${plate_z}"/>
+      </geometry>
+      <material name="ArmPlateGrey">
+        <color rgba="0.7 0.7 0.7 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="${plate_x} ${plate_y} ${plate_z}"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="1.0"/>
+      <origin xyz="0 0 0"/>
+      <inertia ixx="0.013366" ixy="0" ixz="0"
+               iyy="0.025116" iyz="0"
+               izz="0.038500"/>
+    </inertial>
+  </link>
+  <gazebo reference="robot_arm_plate">
+    <material>Gazebo/Grey</material>
+  </gazebo>
+
+  <!-- Plate origin (center) sits half its thickness above default_mount -->
+  <joint name="robot_arm_plate_joint" type="fixed">
+    <origin xyz="0 0 ${plate_z/2}" rpy="0 0 0"/>
+    <parent link="default_mount"/>
+    <child link="robot_arm_plate"/>
+  </joint>
+
+  <!-- ===== UR5e arm (upstream ur_description macro, no local vendoring) ===== -->
+  <xacro:include filename="$(find ur_description)/urdf/ur_macro.xacro"/>
+  <xacro:ur_robot
+      name="ur5e"
+      tf_prefix="ur_arm_"
+      parent="robot_arm_plate"
+      joint_limits_parameters_file="$(find ur_description)/config/ur5e/joint_limits.yaml"
+      kinematics_parameters_file="$(find ur_description)/config/ur5e/default_kinematics.yaml"
+      physical_parameters_file="$(find ur_description)/config/ur5e/physical_parameters.yaml"
+      visual_parameters_file="$(find ur_description)/config/ur5e/visual_parameters.yaml"
+      generate_ros2_control_tag="false"
+      sim_gazebo="false"
+      use_fake_hardware="true">
+    <!-- UR5e base sits on top of the plate (avoids the husky5e intersection) -->
+    <origin xyz="0 0 ${plate_z/2}" rpy="0 0 3.141592653589793"/>
+  </xacro:ur_robot>
+
+</robot>
