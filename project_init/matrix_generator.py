@@ -24,28 +24,49 @@ def load_ifc_point_cloud(mesh_dir):
 
 
 def preprocess_point_cloud(pcd, voxel_size):
+    if pcd.is_empty():
+        raise ValueError(
+            "Input point cloud is empty; cannot compute features.")
     pcd_down = pcd.voxel_down_sample(voxel_size)
+    if pcd_down.is_empty():
+        raise ValueError(
+            "Downsampled point cloud is empty; increase input density or lower voxel size.")
     radius_normal = voxel_size * 2
     pcd_down.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(
         radius=radius_normal, max_nn=30))
+    if not pcd_down.has_normals():
+        raise ValueError(
+            "Failed to estimate normals for point cloud; cannot compute FPFH.")
     radius_feature = voxel_size * 5
     pcd_fpfh = o3d.pipelines.registration.compute_fpfh_feature(
         pcd_down, o3d.geometry.KDTreeSearchParamHybrid(radius=radius_feature, max_nn=100))
     return pcd_down, pcd_fpfh
 
 
-def main():
+def generate_matrix():
     ws_root = os.path.abspath(os.path.join(
-        os.path.dirname(__file__), "../../.."))
+        os.path.dirname(__file__), ".."))
     ifc_mesh_dir = os.path.join(
-        ws_root, "src/robot_gazebo/models/worlds/ifc_world_meshes")
+        ws_root, "src/robot_gazebo/models/worlds/meshes")
     pcd_file = os.path.join(
         ws_root, "src/robot_rviz/models/cloudGlobal_cleaned_excluded.pcd")
     output_transform_file = os.path.join(
         ws_root, "src/robot_task/config/transform_matrix.yaml")
 
+    if not os.path.isdir(ifc_mesh_dir):
+        raise FileNotFoundError(
+            f"IFC mesh directory not found: {ifc_mesh_dir}")
+    if not os.path.isfile(pcd_file):
+        raise FileNotFoundError(f"Target PCD file not found: {pcd_file}")
+
     source_pcd = load_ifc_point_cloud(ifc_mesh_dir)
     target_pcd = o3d.io.read_point_cloud(pcd_file)
+    if source_pcd.is_empty():
+        raise ValueError(
+            "Loaded IFC point cloud is empty; check mesh directory contents.")
+    if target_pcd.is_empty():
+        raise ValueError(
+            "Loaded target point cloud is empty; check PCD file contents.")
 
     voxel_size = 0.2
     source_down, source_fpfh = preprocess_point_cloud(source_pcd, voxel_size)
@@ -73,20 +94,6 @@ def main():
             o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=2000, relative_fitness=1e-7, relative_rmse=1e-7))
         current_transformation = icp_result.transformation
 
-    # # --- SUPERIOR Z-AXIS ALIGNMENT FIX ---
-    # # Since IFC walls lack tops/bottoms, Point-to-Plane slides them loosely along the Z-axis.
-    # # We forcefully snap the Z-axis by aligning the TOP of the IFC walls to the TOP of the PCD walls.
-
-    # source_points_transformed = np.asarray(
-    #     source_pcd.points) @ current_transformation[:3, :3].T + current_transformation[:3, 3]
-    # target_points = np.asarray(target_pcd.points)
-
-    # # Calculate difference between the highest points
-    # z_diff = target_points[:, 2].max() - source_points_transformed[:, 2].max()
-
-    # # Apply raw Z translation correction to the transformation matrix
-    # # current_transformation[2, 3] += z_diff
-
     print("Final Transformation Matrix with Z-Axis Ceiling Lock:")
     print(current_transformation)
 
@@ -98,7 +105,3 @@ def main():
 
     with open(output_transform_file, "w") as f:
         yaml.dump(config, f, default_flow_style=False)
-
-
-if __name__ == "__main__":
-    main()

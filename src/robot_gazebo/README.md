@@ -30,16 +30,16 @@ sudo apt install ros-humble-ur-description
 ```
 
 ## Robot attach/detach
-using services **SapwnEntity** & **DeleteEntity**
+using services **SpawnEntity** & **DeleteEntity**
 - To attach a robot
 ```bash
-ros2 run gazebo_ros spawn_entity.py -entity <entity_name> -file install/robots/..path../robot.urdf -x 0 -y 0 -z 0
+ros2 run gazebo_ros spawn_entity.py -entity husky_ur5e -file install/robot_gazebo/share/robot_gazebo/models/robots/husky_ur5e.urdf -x 0 -y 0 -z 0
 ```
 Note: ur5e requires only 2 arguments -> dont really needt to figure it out tho
 
 - To detach a robot
 ```bash
-ros2 service call /delete_entity gazebo_msgs/srv/DeleteEntity "{name: '<entity_name>'}" 
+ros2 service call /delete_entity gazebo_msgs/srv/DeleteEntity "{name: 'husky_ur5e'}" 
 ```
 
 we are going to use these calls to spawn and delete husky5e robot

@@ -13,7 +13,6 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 
 def _decompose_matrix(matrix: list[list[float]]) -> tuple[float, float, float, float, float, float]:
-    """4x4 rigid transform -> (x, y, z, roll, pitch, yaw) in SDF's RPY (XYZ) convention."""
     M = np.asarray(matrix, dtype=float)
     x, y, z = float(M[0, 3]), float(M[1, 3]), float(M[2, 3])
     R = M[:3, :3]
@@ -39,7 +38,6 @@ def _load_matrix(matrix_yaml: str) -> list[list[float]]:
 
 
 def _patch_ifc_poses(source_sdf: str, pose_str: str) -> str:
-    """Read source SDF, overwrite <pose> on every <model name='Ifc*'>, write to /tmp."""
     tree = ET.parse(source_sdf)
     root = tree.getroot()
     count = 0
@@ -94,4 +92,6 @@ def generate_launch_description() -> LaunchDescription:
         }.items(),
     )
 
-    return LaunchDescription([gazebo])
+    return LaunchDescription([
+        gazebo,
+    ])

@@ -6,7 +6,6 @@ import glob
 
 
 def load_ifc_point_cloud(mesh_dir):
-    """Loads all OBJ meshes in the directory, samples points, and merges them."""
     print(f"Loading IFC meshes from {mesh_dir}...")
     mesh_files = glob.glob(os.path.join(mesh_dir, "*.obj"))
     merged_pcd = o3d.geometry.PointCloud()
@@ -24,15 +23,15 @@ def load_ifc_point_cloud(mesh_dir):
     return merged_pcd
 
 
-def main():
+def visualize_alignment():
     ws_root = os.path.abspath(os.path.join(
-        os.path.dirname(__file__), "../../.."))
+        os.path.dirname(__file__), ".."))
     ifc_mesh_dir = os.path.join(
-        ws_root, "src/robot_gazebo/models/worlds/ifc_world_meshes")
+        ws_root, "src/robot_gazebo/models/worlds/meshes")
     pcd_file = os.path.join(
         ws_root, "src/robot_rviz/models/cloudGlobal_cleaned_excluded.pcd")
     transform_file = os.path.join(
-        ws_root, "src/robot_task/config/ifc_to_pcd_transform.yaml")
+        ws_root, "src/robot_task/config/transform_matrix.yaml")
 
     if not os.path.exists(transform_file):
         print(f"Error: Could not find matrix file at {transform_file}")
@@ -41,7 +40,7 @@ def main():
     print("Loading transformation matrix...")
     with open(transform_file, "r") as f:
         config = yaml.safe_load(f)
-    transformation = np.array(config["ifc_to_pcd_transform"])
+    transformation = np.array(config["matrix"])
 
     print("Loading source (IFC)...")
     source_pcd = load_ifc_point_cloud(ifc_mesh_dir)
@@ -50,6 +49,7 @@ def main():
 
     print("Loading target (PCD)...")
     target_pcd = o3d.io.read_point_cloud(pcd_file)
+    print(f"Loading PCD from {pcd_file}...")
     # Paint target LiDAR Blue
     target_pcd.paint_uniform_color([0.0, 0.0, 1.0])
 
@@ -66,7 +66,3 @@ def main():
         width=1280,
         height=720
     )
-
-
-if __name__ == "__main__":
-    main()
