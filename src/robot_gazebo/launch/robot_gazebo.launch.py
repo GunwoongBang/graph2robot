@@ -72,7 +72,6 @@ def generate_launch_description() -> LaunchDescription:
     pose_str = f'{x:.6f} {y:.6f} {z:.6f} {roll:.6f} {pitch:.6f} {yaw:.6f}'
     world_sdf = _patch_ifc_poses(source_sdf, pose_str)
 
-    # GAZEBO_MODEL_PATH lets <include><uri>model://...</uri></include> resolve our robots.
     os.environ['GAZEBO_MODEL_PATH'] = os.pathsep.join(filter(None, [
         os.environ.get('GAZEBO_MODEL_PATH', ''),
         os.path.join(gazebo_share, 'models', 'robots'),

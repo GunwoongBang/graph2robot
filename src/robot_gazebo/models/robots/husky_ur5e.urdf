@@ -20,13 +20,13 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="model://a200/meshes/visual/base_link.dae"/>
+        <mesh filename="model://a200_meshes/visual/base_link.dae"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="model://a200/meshes/collision/base_link.stl"/>
+        <mesh filename="model://a200_meshes/collision/base_link.stl"/>
       </geometry>
     </collision>
     <collision>
@@ -54,13 +54,13 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="model://a200/meshes/visual/top_chassis.dae"/>
+        <mesh filename="model://a200_meshes/visual/top_chassis.dae"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="model://a200/meshes/collision/top_chassis.stl"/>
+        <mesh filename="model://a200_meshes/collision/top_chassis.stl"/>
       </geometry>
     </collision>
   </link>
@@ -91,13 +91,13 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="model://a200/meshes/visual/wheel.dae"/>
+        <mesh filename="model://a200_meshes/visual/wheel.dae"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="model://a200/meshes/collision/wheel.stl"/>
+        <mesh filename="model://a200_meshes/collision/wheel.stl"/>
       </geometry>
     </collision>
     <collision>
@@ -129,13 +129,13 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="model://a200/meshes/visual/wheel.dae"/>
+        <mesh filename="model://a200_meshes/visual/wheel.dae"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="model://a200/meshes/collision/wheel.stl"/>
+        <mesh filename="model://a200_meshes/collision/wheel.stl"/>
       </geometry>
     </collision>
     <collision>
@@ -167,13 +167,13 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="model://a200/meshes/visual/wheel.dae"/>
+        <mesh filename="model://a200_meshes/visual/wheel.dae"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="model://a200/meshes/collision/wheel.stl"/>
+        <mesh filename="model://a200_meshes/collision/wheel.stl"/>
       </geometry>
     </collision>
     <collision>
@@ -205,13 +205,13 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="model://a200/meshes/visual/wheel.dae"/>
+        <mesh filename="model://a200_meshes/visual/wheel.dae"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="model://a200/meshes/collision/wheel.stl"/>
+        <mesh filename="model://a200_meshes/collision/wheel.stl"/>
       </geometry>
     </collision>
     <collision>
@@ -419,13 +419,13 @@
     <visual>
       <origin rpy="0 0 3.141592653589793" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="model://ur5e/meshes/visual/base.dae"/>
+        <mesh filename="model://ur5e_meshes/visual/base.dae"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 3.141592653589793" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="model://ur5e/meshes/collision/base.stl"/>
+        <mesh filename="model://ur5e_meshes/collision/base.stl"/>
       </geometry>
     </collision>
     <inertial>
@@ -438,13 +438,13 @@
     <visual>
       <origin rpy="0 0 3.141592653589793" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="model://ur5e/meshes/visual/shoulder.dae"/>
+        <mesh filename="model://ur5e_meshes/visual/shoulder.dae"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 3.141592653589793" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="model://ur5e/meshes/collision/shoulder.stl"/>
+        <mesh filename="model://ur5e_meshes/collision/shoulder.stl"/>
       </geometry>
     </collision>
     <inertial>
@@ -457,13 +457,13 @@
     <visual>
       <origin rpy="1.5707963267948966 0 -1.5707963267948966" xyz="0 0 0.138"/>
       <geometry>
-        <mesh filename="model://ur5e/meshes/visual/upperarm.dae"/>
+        <mesh filename="model://ur5e_meshes/visual/upperarm.dae"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="1.5707963267948966 0 -1.5707963267948966" xyz="0 0 0.138"/>
       <geometry>
-        <mesh filename="model://ur5e/meshes/collision/upperarm.stl"/>
+        <mesh filename="model://ur5e_meshes/collision/upperarm.stl"/>
       </geometry>
     </collision>
     <inertial>
@@ -476,13 +476,13 @@
     <visual>
       <origin rpy="1.5707963267948966 0 -1.5707963267948966" xyz="0 0 0.007"/>
       <geometry>
-        <mesh filename="model://ur5e/meshes/visual/forearm.dae"/>
+        <mesh filename="model://ur5e_meshes/visual/forearm.dae"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="1.5707963267948966 0 -1.5707963267948966" xyz="0 0 0.007"/>
       <geometry>
-        <mesh filename="model://ur5e/meshes/collision/forearm.stl"/>
+        <mesh filename="model://ur5e_meshes/collision/forearm.stl"/>
       </geometry>
     </collision>
     <inertial>
@@ -495,13 +495,13 @@
     <visual>
       <origin rpy="1.5707963267948966 0 0" xyz="0 0 -0.127"/>
       <geometry>
-        <mesh filename="model://ur5e/meshes/visual/wrist1.dae"/>
+        <mesh filename="model://ur5e_meshes/visual/wrist1.dae"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="1.5707963267948966 0 0" xyz="0 0 -0.127"/>
       <geometry>
-        <mesh filename="model://ur5e/meshes/collision/wrist1.stl"/>
+        <mesh filename="model://ur5e_meshes/collision/wrist1.stl"/>
       </geometry>
     </collision>
     <inertial>
@@ -514,13 +514,13 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 -0.0997"/>
       <geometry>
-        <mesh filename="model://ur5e/meshes/visual/wrist2.dae"/>
+        <mesh filename="model://ur5e_meshes/visual/wrist2.dae"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 -0.0997"/>
       <geometry>
-        <mesh filename="model://ur5e/meshes/collision/wrist2.stl"/>
+        <mesh filename="model://ur5e_meshes/collision/wrist2.stl"/>
       </geometry>
     </collision>
     <inertial>
@@ -533,13 +533,13 @@
     <visual>
       <origin rpy="1.5707963267948966 0 0" xyz="0 0 -0.0989"/>
       <geometry>
-        <mesh filename="model://ur5e/meshes/visual/wrist3.dae"/>
+        <mesh filename="model://ur5e_meshes/visual/wrist3.dae"/>
       </geometry>
     </visual>
     <collision>
       <origin rpy="1.5707963267948966 0 0" xyz="0 0 -0.0989"/>
       <geometry>
-        <mesh filename="model://ur5e/meshes/collision/wrist3.stl"/>
+        <mesh filename="model://ur5e_meshes/collision/wrist3.stl"/>
       </geometry>
     </collision>
     <inertial>
