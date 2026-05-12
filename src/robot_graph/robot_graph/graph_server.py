@@ -7,7 +7,7 @@ from neo4j import GraphDatabase
 from rclpy.node import Node
 from std_srvs.srv import Trigger
 
-from .util import query_mep_elements
+from .util import query_mep_elements, query_walls
 
 load_dotenv()
 
@@ -39,12 +39,15 @@ class GraphServer(Node):
                 self.get_logger().error(
                     f'Failed to connect to Neo4j at {uri}: {exc}.')
 
-        # Currently, the node only provides one service to list MEP elements.
-        # In the future, there could be more services for different types of elements.
         self._mep_elements_srv = self.create_service(
             Trigger, '/graph/list_mep_elements', self._handle_list_mep_elements)
         self.get_logger().info(
             'Service ready: /graph/list_mep_elements (std_srvs/Trigger)')
+
+        self._walls_srv = self.create_service(
+            Trigger, '/graph/list_walls', self._handle_list_walls)
+        self.get_logger().info(
+            'Service ready: /graph/list_walls (std_srvs/Trigger)')
 
         # TODO: Add more services for updating the graph
         # self._update_graph_srv = self.create_service(...)
@@ -57,7 +60,7 @@ class GraphServer(Node):
             return response
 
         try:
-            elements = query_mep_elements(self.driver, self._query_limit)
+            mep_elements = query_mep_elements(self.driver, self._query_limit)
         except Exception as exc:
             self.get_logger().error(f'Failed to query MEP elements: {exc}')
             response.success = False
@@ -65,9 +68,30 @@ class GraphServer(Node):
             return response
 
         response.success = True
-        response.message = json.dumps(elements)
+        response.message = json.dumps(mep_elements)
         self.get_logger().info(
-            f'Returned {len(elements)} MEP elements to client.')
+            f'Returned {len(mep_elements)} MEP elements to client.')
+        return response
+
+    def _handle_list_walls(
+            self, _request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:
+        if self.driver is None:
+            response.success = False
+            response.message = 'Neo4j driver is not connected.'
+            return response
+
+        try:
+            walls = query_walls(self.driver, self._query_limit)
+        except Exception as exc:
+            self.get_logger().error(f'Failed to query walls: {exc}')
+            response.success = False
+            response.message = f'Query failed: {exc}'
+            return response
+
+        response.success = True
+        response.message = json.dumps(walls)
+        self.get_logger().info(
+            f'Returned {len(walls)} walls to client.')
         return response
 
     def destroy_node(self) -> bool:

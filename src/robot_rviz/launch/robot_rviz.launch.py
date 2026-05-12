@@ -9,17 +9,17 @@ def generate_launch_description() -> LaunchDescription:
     package_share = Path(get_package_share_directory('robot_rviz'))
     rviz_config = package_share / 'config' / 'config.rviz'
 
-    pointcloud_node = Node(
+    pointcloud_publisher_node = Node(
         package='robot_rviz',
         executable='pointcloud_publisher',
         name='pointcloud_publisher',
         output='screen',
     )
 
-    task_node = Node(
+    task_distributor_node = Node(
         package='robot_rviz',
-        executable='task_subscriber',
-        name='task_subscriber',
+        executable='task_distributor',
+        name='task_distributor',
         output='screen',
     )
 
@@ -29,7 +29,7 @@ def generate_launch_description() -> LaunchDescription:
     )
 
     return LaunchDescription([
-        pointcloud_node,
-        task_node,
+        pointcloud_publisher_node,
+        task_distributor_node,
         rviz,
     ])

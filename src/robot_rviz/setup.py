@@ -35,7 +35,7 @@ setup(
     entry_points={
         'console_scripts': [
             'pointcloud_publisher=robot_rviz.pointcloud_publisher:main',
-            'task_subscriber=robot_rviz.task_subscriber:main',
+            'task_distributor=robot_rviz.task_distributor:main',
         ],
     },
 )

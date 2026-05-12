@@ -21,9 +21,9 @@ from visualization_msgs.msg import (
 )
 
 
-class TaskSubscriber(Node):
+class TaskDistributor(Node):
     def __init__(self) -> None:
-        super().__init__('task_subscriber')
+        super().__init__('task_distributor')
 
         self.declare_parameter('marker_diameter', 0.3)
         self._marker_diameter = float(
@@ -39,25 +39,24 @@ class TaskSubscriber(Node):
         self._cloud_sub = self.create_subscription(
             PointCloud2, '/cloud', self._on_cloud, latched_qos)
         self._task_sub = self.create_subscription(
-            String, '/task', self._on_task, latched_qos)
+            String, '/task/mep_elements', self._on_task, latched_qos)
+        self._walls_sub = self.create_subscription(
+            String, '/task/walls', self._on_walls, latched_qos)
         self._matrix_sub = self.create_subscription(
             String, '/matrix', self._on_matrix, latched_qos)
-
-        self._selected_pub = self.create_publisher(
+        self._selected_task_pub = self.create_publisher(
             String, '/task/selected_task', latched_qos)
-        self._selected_sub = self.create_subscription(
+        self._selected_task_sub = self.create_subscription(
             String, '/task/selected_task', self._on_selected_task, latched_qos)
 
         self._marker_server = InteractiveMarkerServer(self, 'task')
 
         self._cloud: np.ndarray | None = None
         self._frame_id: str = 'world'
-        self._elements: list[dict] | None = None
+        self._tasks: list[dict] | None = None
+        self._walls: list[dict] | None = None
         self._matrix: np.ndarray | None = None
-        # Map marker name (= element id) -> full element dict, for click handling.
         self._element_index: dict[str, dict] = {}
-        # Map element id -> snapped (x, y, z) so we can rebuild markers on selection
-        # without re-running the transform / nearest-neighbor search.
         self._marker_positions: dict[str, tuple[float, float, float]] = {}
         self._selected_id: str | None = None
 
@@ -79,10 +78,20 @@ class TaskSubscriber(Node):
         except json.JSONDecodeError as exc:
             self.get_logger().error(f'Invalid /task JSON: {exc}')
             return
-        self._elements = payload.get('elements', [])
+        self._tasks = payload.get('tasks', [])
         self.get_logger().info(
-            f'Received {len(self._elements)} elements on /task.')
+            f'Received {len(self._tasks)} tasks on /task.')
         self._try_process()
+
+    def _on_walls(self, msg: String) -> None:
+        try:
+            payload = json.loads(msg.data)
+        except json.JSONDecodeError as exc:
+            self.get_logger().error(f'Invalid /task/walls JSON: {exc}')
+            return
+        self._walls = payload.get('walls', [])
+        self.get_logger().info(
+            f'Received {len(self._walls)} walls on /task/walls.')
 
     def _on_matrix(self, msg: String) -> None:
         try:
@@ -99,8 +108,21 @@ class TaskSubscriber(Node):
         self.get_logger().info('Received transform matrix on /matrix.')
         self._try_process()
 
+    def _on_selected_task(self, msg: String) -> None:
+        try:
+            payload = json.loads(msg.data)
+        except json.JSONDecodeError as exc:
+            self.get_logger().error(
+                f'Invalid /task/selected_task JSON: {exc}')
+            return
+        new_id = (payload.get('task') or {}).get('id')
+        if new_id == self._selected_id:
+            return
+        self._selected_id = new_id
+        self._redraw_markers()
+
     def _try_process(self) -> None:
-        if self._cloud is None or self._elements is None or self._matrix is None:
+        if self._cloud is None or self._tasks is None or self._matrix is None:
             return
         if len(self._cloud) == 0:
             self.get_logger().warn('Empty point cloud; skipping.')
@@ -110,7 +132,7 @@ class TaskSubscriber(Node):
         self._element_index.clear()
         self._marker_positions.clear()
 
-        for element in self._elements:
+        for element in self._tasks:
             center = element.get('center')
             element_id = element.get('id')
             if center is None or len(center) != 3 or not element_id:
@@ -148,25 +170,25 @@ class TaskSubscriber(Node):
     def _build_interactive_marker(
             self, element: dict, x: float, y: float, z: float,
             selected: bool = False) -> InteractiveMarker:
-        sphere = Marker()
-        sphere.type = Marker.SPHERE
-        sphere.scale.x = self._marker_diameter
-        sphere.scale.y = self._marker_diameter
-        sphere.scale.z = self._marker_diameter
+        marker = Marker()
+        marker.type = Marker.SPHERE
+        marker.scale.x = self._marker_diameter
+        marker.scale.y = self._marker_diameter
+        marker.scale.z = self._marker_diameter
         if selected:
-            sphere.color.r = 0.0
-            sphere.color.g = 0.0
-            sphere.color.b = 1.0
+            marker.color.r = 0.0
+            marker.color.g = 0.0
+            marker.color.b = 1.0
         else:
-            sphere.color.r = 1.0
-            sphere.color.g = 0.0
-            sphere.color.b = 0.0
-        sphere.color.a = 1.0
+            marker.color.r = 1.0
+            marker.color.g = 0.0
+            marker.color.b = 0.0
+        marker.color.a = 1.0
 
         control = InteractiveMarkerControl()
         control.always_visible = True
         control.interaction_mode = InteractiveMarkerControl.BUTTON
-        control.markers.append(sphere)
+        control.markers.append(marker)
 
         int_marker = InteractiveMarker()
         int_marker.header.frame_id = self._frame_id
@@ -189,28 +211,15 @@ class TaskSubscriber(Node):
                 f'Click on unknown marker: {feedback.marker_name}')
             return
         msg = String()
-        msg.data = json.dumps({'element': element})
-        self._selected_pub.publish(msg)
+        msg.data = json.dumps({'task': element})
+        self._selected_task_pub.publish(msg)
         self.get_logger().info(
-            f"Selected element on /task/selected_task: id={element['id']}")
-
-    def _on_selected_task(self, msg: String) -> None:
-        try:
-            payload = json.loads(msg.data)
-        except json.JSONDecodeError as exc:
-            self.get_logger().error(
-                f'Invalid /task/selected_task JSON: {exc}')
-            return
-        new_id = (payload.get('element') or {}).get('id')
-        if new_id == self._selected_id:
-            return
-        self._selected_id = new_id
-        self._redraw_markers()
+            f"Selected task on /task/selected_task: id={element['id']}")
 
 
 def main() -> None:
     rclpy.init()
-    node = TaskSubscriber()
+    node = TaskDistributor()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:

@@ -3,21 +3,29 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    graph_node = Node(
+    graph_client_node = Node(
         package='robot_task',
         executable='graph_client',
         name='graph_client',
         output='screen',
     )
 
-    task_node = Node(
+    task_manager_node = Node(
         package='robot_task',
-        executable='task_publisher',
-        name='task_publisher',
+        executable='task_manager',
+        name='task_manager',
+        output='screen',
+    )
+
+    task_generator_node = Node(
+        package='robot_task',
+        executable='task_generator',
+        name='task_generator',
         output='screen',
     )
 
     return LaunchDescription([
-        graph_node,
-        task_node,
+        graph_client_node,
+        task_manager_node,
+        task_generator_node,
     ])
