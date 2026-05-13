@@ -54,7 +54,17 @@ class TaskGenerator(Node):
         self.get_logger().info(
             f"Selected task: name='{self._selected_element.get('name', '')}' "
             f"id={self._selected_element.get('id', '')}")
-        self._request_wall_info()
+        self.publish_drilling_position()
+
+    def _on_walls(self, msg: String) -> None:
+        try:
+            payload = json.loads(msg.data)
+        except json.JSONDecodeError as exc:
+            self.get_logger().error(f'Invalid /task/walls JSON: {exc}')
+            return
+        self._walls = payload.get('walls', [])
+        self.get_logger().info(
+            f'Received {len(self._walls)} walls on /task/walls.')
 
     def _load_transform_matrix(self) -> np.ndarray:
         if not self._matrix_yaml.exists():
@@ -73,34 +83,83 @@ class TaskGenerator(Node):
                 f'Failed to load transform matrix: {exc}; using identity.')
             return np.eye(4, dtype=float)
 
-    def _on_walls(self, msg: String) -> None:
-        try:
-            payload = json.loads(msg.data)
-        except json.JSONDecodeError as exc:
-            self.get_logger().error(f'Invalid /task/walls JSON: {exc}')
-            return
-        self._walls = payload.get('walls', [])
-        self.get_logger().info(
-            f'Received {len(self._walls)} walls on /task/walls.')
-
-    def _request_wall_info(self) -> None:
-        wall_ref = (self._selected_element or {}).get('wall') or {}
-        wall_id = wall_ref.get('id')
-        if not wall_id:
-            self.get_logger().warn(
-                'Selected task has no wall id; skipping wall lookup.')
+    def publish_drilling_position(self) -> None:
+        if self._selected_element is None:
             return
         if self._walls is None:
             self.get_logger().warn(
-                '/walls not yet received; cannot look up wall.')
+                '/task/walls not yet received; cannot compute drilling position.')
             return
+
+        center = self._selected_element.get('center')
+        face = self._selected_element.get('face')
+        wall_id = (self._selected_element.get('wall') or {}).get('id')
+
+        if center is None or len(center) != 3:
+            self.get_logger().warn(
+                'Selected task has no valid center; skipping.')
+            return
+        if face is None or len(face) != 3:
+            self.get_logger().warn(
+                'Selected task has no valid face; skipping.')
+            return
+        if not wall_id:
+            self.get_logger().warn(
+                'Selected task has no wall id; skipping.')
+            return
+
         wall = next((w for w in self._walls if w.get('id') == wall_id), None)
         if wall is None:
             self.get_logger().warn(
-                f'Wall id={wall_id} not found in cached /walls.')
+                f'Wall id={wall_id} not found in cached /task/walls.')
             return
+        axis2 = wall.get('axis2')
+        if axis2 is None or len(axis2) != 3:
+            self.get_logger().warn(
+                f'Wall id={wall_id} has no valid axis2; skipping.')
+            return
+
+        # IFC center is in millimeters; the cloud / world frame is in meters.
+        cx = center[0] / 1000.0
+        cy = center[1] / 1000.0
+        # Floor height in cloud frame is the z translation of the IFC->cloud matrix.
+        floor_z = float(self._transform_matrix[2, 3])
+        offset = 0.4
+
+        if abs(axis2[0]) > 0.5:
+            if face[0] > 0.5:
+                x, y = cx + offset, cy
+            elif face[0] < -0.5:
+                x, y = cx - offset, cy
+            else:
+                self.get_logger().warn(
+                    f'face={face} not aligned with axis2={axis2}; skipping.')
+                return
+        elif abs(axis2[1]) > 0.5:
+            if face[1] > 0.5:
+                x, y = cx, cy + offset
+            elif face[1] < -0.5:
+                x, y = cx, cy - offset
+            else:
+                self.get_logger().warn(
+                    f'face={face} not aligned with axis2={axis2}; skipping.')
+                return
+        else:
+            self.get_logger().warn(
+                f'axis2={axis2} not aligned with x or y axis; skipping.')
+            return
+
+        z = floor_z
+        payload = {
+            'count': 1,
+            'drilling_position': {'x': x, 'y': y, 'z': z},
+        }
+        msg = String()
+        msg.data = json.dumps(payload)
+        self._drilling_position_pub.publish(msg)
         self.get_logger().info(
-            f"Looked up wall: name='{wall.get('name', '')}' id={wall.get('id', '')}")
+            f'Published drilling position on /task/drilling_position: '
+            f'({x:.3f}, {y:.3f}, {z:.3f}).')
 
 
 def main() -> None:

@@ -11,8 +11,8 @@ WITH e,
      } END) AS rels
 WITH e, [x IN rels WHERE x IS NOT NULL] AS me_w_rels
 RETURN e.id AS id,
-       e.name AS name,
        e.ifcClass AS ifcClass,
+       e.face AS face,
        head(me_w_rels).wall AS wall,
        head(me_w_rels).center AS center
 ORDER BY e.name
@@ -22,7 +22,6 @@ LIMIT $limit
 _QUERY_WALLS = """
 MATCH (w:Wall)
 RETURN w.id AS id,
-       w.name AS name,
        w.axis2 AS axis2
 ORDER BY w.name
 LIMIT $limit
@@ -36,8 +35,8 @@ def query_mep_elements(driver: Driver, limit: int) -> list[dict[str, Any]]:
         for record in result:
             elements.append({
                 'id': record['id'],
-                'name': record['name'],
                 'ifcClass': record['ifcClass'],
+                'face': record['face'],
                 'wall': record['wall'],
                 'center': record['center'],
             })
@@ -51,7 +50,6 @@ def query_walls(driver: Driver, limit: int) -> list[dict[str, Any]]:
         for record in result:
             walls.append({
                 'id': record['id'],
-                'name': record['name'],
                 'axis2': record['axis2'],
             })
     return walls

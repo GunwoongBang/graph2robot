@@ -13,7 +13,6 @@ from rclpy.qos import (
     DurabilityPolicy,
     HistoryPolicy,
 )
-from typing import Any
 from std_msgs.msg import String
 
 
@@ -42,8 +41,8 @@ class TaskManager(Node):
         self._matrix_pub = self.create_publisher(
             String, '/matrix', latched_qos)
 
-        self._mep_elements: list[dict[str, Any]] | None = None
-        self._walls: list[dict[str, Any]] | None = None
+        self._mep_elements: list[dict] | None = None
+        self._walls: list[dict] | None = None
         self._transform_matrix = self._load_transform_matrix()
 
     def _on_mep_elements(self, msg: String) -> None:
@@ -117,7 +116,7 @@ class TaskManager(Node):
         msg = String()
         msg.data = json.dumps(payload)
         self._matrix_pub.publish(msg)
-        self.get_logger().info('Published transformation matrix.')
+        self.get_logger().info('Published transformation matrix on /matrix.')
 
 
 def main() -> None:

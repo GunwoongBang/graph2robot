@@ -24,4 +24,4 @@ Schritt fuer Schritt
 1. first, retrieve the center point (done already) (DONE)
 2. graph_client asks for wall information to graph_server (DONE)
 3. from the graph_server, we are receiving a wall information including axis2 which is a denominator of in which direction the wall is lying (DONE)
-4. task_generator now calculates the drilling position with the attributes "center" from /task/selected_task, and "axis2" from /walls
+4. task_generator now calculates the drilling position with the attributes "center" from /task/selected_task, and "axis2" from /walls (info collected, calculation ready)
