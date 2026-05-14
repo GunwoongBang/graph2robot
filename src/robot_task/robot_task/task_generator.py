@@ -119,27 +119,27 @@ class TaskGenerator(Node):
                 f'Wall id={wall_id} has no valid axis2; skipping.')
             return
 
-        # IFC center is in millimeters; the cloud / world frame is in meters.
+        # IFC center is in millimeters; compute robot base position in IFC frame
+        # (meters), at floor level (ifc_z = 0) so the full matrix lifts it into
+        # the cloud frame.
         cx = center[0] / 1000.0
         cy = center[1] / 1000.0
-        # Floor height in cloud frame is the z translation of the IFC->cloud matrix.
-        floor_z = float(self._transform_matrix[2, 3])
         offset = 0.4
 
-        if abs(axis2[0]) > 0.5:
-            if face[0] > 0.5:
-                x, y = cx + offset, cy
-            elif face[0] < -0.5:
-                x, y = cx - offset, cy
+        if abs(axis2[0]) == 1.0:
+            if face[0] == 1.0:
+                ifc_xy = (cx + offset, cy)
+            elif face[0] == -1.0:
+                ifc_xy = (cx - offset, cy)
             else:
                 self.get_logger().warn(
                     f'face={face} not aligned with axis2={axis2}; skipping.')
                 return
-        elif abs(axis2[1]) > 0.5:
-            if face[1] > 0.5:
-                x, y = cx, cy + offset
-            elif face[1] < -0.5:
-                x, y = cx, cy - offset
+        elif abs(axis2[1]) == 1.0:
+            if face[1] == 1.0:
+                ifc_xy = (cx, cy + offset)
+            elif face[1] == -1.0:
+                ifc_xy = (cx, cy - offset)
             else:
                 self.get_logger().warn(
                     f'face={face} not aligned with axis2={axis2}; skipping.')
@@ -149,17 +149,32 @@ class TaskGenerator(Node):
                 f'axis2={axis2} not aligned with x or y axis; skipping.')
             return
 
-        z = floor_z
+        # Lift IFC (x, y, 0) into the cloud frame with the full 4x4 matrix.
+        ifc_pos = np.array([ifc_xy[0], ifc_xy[1], 0.0, 1.0])
+        cloud_pos = self._transform_matrix @ ifc_pos
+        x, y, z = float(cloud_pos[0]), float(cloud_pos[1]), float(cloud_pos[2])
+
+        # Robot heading is -face (so it looks at the wall), rotated into the
+        # cloud frame by the matrix rotation block.
+        ifc_heading = np.array([-float(face[0]), -float(face[1]), 0.0])
+        cloud_heading = self._transform_matrix[:3, :3] @ ifc_heading
+        yaw = float(np.arctan2(cloud_heading[1], cloud_heading[0]))
+        qz = float(np.sin(yaw / 2.0))
+        qw = float(np.cos(yaw / 2.0))
+
         payload = {
             'count': 1,
-            'drilling_position': {'x': x, 'y': y, 'z': z},
+            'drilling_position': {
+                'x': x, 'y': y, 'z': z,
+                'qx': 0.0, 'qy': 0.0, 'qz': qz, 'qw': qw,
+            },
         }
         msg = String()
         msg.data = json.dumps(payload)
         self._drilling_position_pub.publish(msg)
         self.get_logger().info(
             f'Published drilling position on /task/drilling_position: '
-            f'({x:.3f}, {y:.3f}, {z:.3f}).')
+            f'({x:.3f}, {y:.3f}, {z:.3f}) yaw={yaw:.3f} rad.')
 
 
 def main() -> None:

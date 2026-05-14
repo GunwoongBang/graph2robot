@@ -74,6 +74,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'robot_spawner=robot_gazebo.robot_spawner:main',
         ],
     },
 )

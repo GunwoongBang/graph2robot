@@ -10,6 +10,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch_ros.actions import Node
 
 
 def _decompose_matrix(matrix: list[list[float]]) -> tuple[float, float, float, float, float, float]:
@@ -59,6 +60,8 @@ def _patch_ifc_poses(source_sdf: str, pose_str: str) -> str:
     return out.name
 
 
+# reading the matrix directly from the other package's yaml is not ideal
+# but we will think about it
 def generate_launch_description() -> LaunchDescription:
     gazebo_share = get_package_share_directory('robot_gazebo')
     task_share = get_package_share_directory('robot_task')
@@ -91,6 +94,14 @@ def generate_launch_description() -> LaunchDescription:
         }.items(),
     )
 
+    robot_spawner = Node(
+        package='robot_gazebo',
+        executable='robot_spawner',
+        name='robot_spawner',
+        output='screen',
+    )
+
     return LaunchDescription([
         gazebo,
+        robot_spawner,
     ])
