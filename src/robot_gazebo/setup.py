@@ -15,6 +15,7 @@ setup(
         ]),
         ('share/' + package_name + '/models/worlds', [
             'models/worlds/ifc_world.sdf',
+            'models/worlds/empty_world.sdf',
         ]),
         # ('share/' + package_name + '/urdf/husky_ur5e', [
         #     'urdf/husky_ur5e/husky_ur5e.urdf.xacro',
@@ -75,6 +76,7 @@ setup(
     entry_points={
         'console_scripts': [
             'robot_spawner=robot_gazebo.robot_spawner:main',
+            'world_spawner=robot_gazebo.world_spawner:main',
         ],
     },
 )

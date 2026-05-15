@@ -1,10 +1,6 @@
 import json
-import yaml
 import rclpy
-import numpy as np
 
-from pathlib import Path
-from ament_index_python.packages import get_package_share_directory
 from rclpy.node import Node
 from rclpy.qos import (
     DurabilityPolicy,
@@ -18,9 +14,6 @@ from std_msgs.msg import String
 class TaskGenerator(Node):
     def __init__(self) -> None:
         super().__init__('task_generator')
-
-        package_share = Path(get_package_share_directory('robot_task'))
-        self._matrix_yaml = package_share / 'config' / 'transform_matrix.yaml'
 
         latched_qos = QoSProfile(
             depth=1,
@@ -38,7 +31,6 @@ class TaskGenerator(Node):
 
         self._selected_element: dict | None = None
         self._walls: list[dict] | None = None
-        self._transform_matrix = self._load_transform_matrix()
 
     def _on_selected_task(self, msg: String) -> None:
         try:
@@ -65,23 +57,6 @@ class TaskGenerator(Node):
         self._walls = payload.get('walls', [])
         self.get_logger().info(
             f'Received {len(self._walls)} walls on /task/walls.')
-
-    def _load_transform_matrix(self) -> np.ndarray:
-        if not self._matrix_yaml.exists():
-            self.get_logger().warning(
-                f'Transform file not found: {self._matrix_yaml}; using identity.')
-            return np.eye(4, dtype=float)
-        try:
-            with open(self._matrix_yaml, 'r') as f:
-                cfg = yaml.safe_load(f)
-            mat = np.array(cfg.get('matrix', np.eye(4)))
-            if mat.shape != (4, 4):
-                raise ValueError('transform matrix must be 4x4')
-            return mat.astype(float)
-        except Exception as exc:
-            self.get_logger().error(
-                f'Failed to load transform matrix: {exc}; using identity.')
-            return np.eye(4, dtype=float)
 
     def publish_drilling_position(self) -> None:
         if self._selected_element is None:
@@ -119,12 +94,11 @@ class TaskGenerator(Node):
                 f'Wall id={wall_id} has no valid axis2; skipping.')
             return
 
-        # IFC center is in millimeters; compute robot base position in IFC frame
-        # (meters), at floor level (ifc_z = 0) so the full matrix lifts it into
-        # the cloud frame.
+        # IFC center is in millimeters; compute robot base position in IFC
+        # frame (meters) at floor level (z = 0).
         cx = center[0] / 1000.0
         cy = center[1] / 1000.0
-        offset = 0.4
+        offset = 0.6  # distance from wall to drilling position, 0.4 causes collisions
 
         if abs(axis2[0]) == 1.0:
             if face[0] == 1.0:
@@ -149,32 +123,27 @@ class TaskGenerator(Node):
                 f'axis2={axis2} not aligned with x or y axis; skipping.')
             return
 
-        # Lift IFC (x, y, 0) into the cloud frame with the full 4x4 matrix.
-        ifc_pos = np.array([ifc_xy[0], ifc_xy[1], 0.0, 1.0])
-        cloud_pos = self._transform_matrix @ ifc_pos
-        x, y, z = float(cloud_pos[0]), float(cloud_pos[1]), float(cloud_pos[2])
-
-        # Robot heading is -face (so it looks at the wall), rotated into the
-        # cloud frame by the matrix rotation block.
-        ifc_heading = np.array([-float(face[0]), -float(face[1]), 0.0])
-        cloud_heading = self._transform_matrix[:3, :3] @ ifc_heading
-        yaw = float(np.arctan2(cloud_heading[1], cloud_heading[0]))
-        qz = float(np.sin(yaw / 2.0))
-        qw = float(np.cos(yaw / 2.0))
+        # Heading - opposite of `face`, so the robot looks at the
+        # wall.
+        hx = -float(face[0])
+        hy = -float(face[1])
 
         payload = {
             'count': 1,
             'drilling_position': {
-                'x': x, 'y': y, 'z': z,
-                'qx': 0.0, 'qy': 0.0, 'qz': qz, 'qw': qw,
+                'x': float(ifc_xy[0]),
+                'y': float(ifc_xy[1]),
+                'z': 0.0,
+                'hx': hx,
+                'hy': hy,
             },
         }
         msg = String()
         msg.data = json.dumps(payload)
         self._drilling_position_pub.publish(msg)
         self.get_logger().info(
-            f'Published drilling position on /task/drilling_position: '
-            f'({x:.3f}, {y:.3f}, {z:.3f}) yaw={yaw:.3f} rad.')
+            f'Published IFC-frame drilling position on /task/drilling_position: '
+            f'pos=({ifc_xy[0]:.3f}, {ifc_xy[1]:.3f}, 0.000) heading=({hx:.3f}, {hy:.3f}).')
 
 
 def main() -> None:

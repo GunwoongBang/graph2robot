@@ -1,5 +1,6 @@
 import json
 import rclpy
+import numpy as np
 
 from pathlib import Path
 from ament_index_python.packages import get_package_share_directory
@@ -28,6 +29,9 @@ class RobotSpawner(Node):
         self._urdf_path = package_share / 'models' / 'robots' / 'husky_ur5e.urdf'
         self._urdf_xml = self._load_urdf()
 
+        self._spawn_cli = self.create_client(SpawnEntity, '/spawn_entity')
+        self._delete_cli = self.create_client(DeleteEntity, '/delete_entity')
+
         latched_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.RELIABLE,
@@ -37,13 +41,13 @@ class RobotSpawner(Node):
 
         self._drilling_position_sub = self.create_subscription(
             String, '/task/drilling_position', self._on_drilling_position, latched_qos)
-
-        self._spawn_cli = self.create_client(SpawnEntity, '/spawn_entity')
-        self._delete_cli = self.create_client(DeleteEntity, '/delete_entity')
-
+        self._matrix_sub = self.create_subscription(
+            String, '/matrix', self._on_matrix, latched_qos
+        )
         self._busy = False
         self._pending_pose: Pose | None = None
         self._post_spawn_timer = None
+        self._matrix: np.ndarray | None = None
 
     def _load_urdf(self) -> str:
         if not self._urdf_path.exists():
@@ -57,6 +61,10 @@ class RobotSpawner(Node):
             self.get_logger().warn(
                 'Spawn/drill cycle in progress; ignoring new /task/drilling_position.')
             return
+        if self._matrix is None:
+            self.get_logger().warn(
+                '/matrix not yet received; cannot transform drilling position.')
+            return
         try:
             payload = json.loads(msg.data)
         except json.JSONDecodeError as exc:
@@ -64,21 +72,49 @@ class RobotSpawner(Node):
                 f'Invalid /task/drilling_position JSON: {exc}')
             return
         d = payload.get('drilling_position') or {}
+
+        # IFC -> cloud frame: apply full 4x4 to position, rotation block to heading.
+        ifc_pos = np.array(
+            [float(d.get('x', 0.0)),
+             float(d.get('y', 0.0)),
+             float(d.get('z', 0.0)),
+             1.0])
+        cloud_pos = self._matrix @ ifc_pos
+
+        ifc_heading = np.array(
+            [float(d.get('hx', 1.0)), float(d.get('hy', 0.0)), 0.0])
+        cloud_heading = self._matrix[:3, :3] @ ifc_heading
+        yaw = float(np.arctan2(cloud_heading[1], cloud_heading[0]))
+
         pose = Pose()
-        pose.position.x = float(d.get('x', 0.0))
-        pose.position.y = float(d.get('y', 0.0))
-        pose.position.z = float(d.get('z', 0.0))
-        pose.orientation.x = float(d.get('qx', 0.0))
-        pose.orientation.y = float(d.get('qy', 0.0))
-        pose.orientation.z = float(d.get('qz', 0.0))
-        pose.orientation.w = float(d.get('qw', 1.0))
+        pose.position.x = float(cloud_pos[0])
+        pose.position.y = float(cloud_pos[1])
+        pose.position.z = float(cloud_pos[2])
+        pose.orientation.x = 0.0
+        pose.orientation.y = 0.0
+        pose.orientation.z = float(np.sin(yaw / 2.0))
+        pose.orientation.w = float(np.cos(yaw / 2.0))
 
         self._pending_pose = pose
         self._busy = True
         self.get_logger().info(
-            f'Drilling target: pos=({pose.position.x:.3f}, {pose.position.y:.3f}, '
-            f'{pose.position.z:.3f}) qz={pose.orientation.z:.3f} qw={pose.orientation.w:.3f}')
+            f'Drilling target (cloud frame): pos=({pose.position.x:.3f}, '
+            f'{pose.position.y:.3f}, {pose.position.z:.3f}) yaw={yaw:.3f} rad.')
         self._delete_then_spawn()
+
+    def _on_matrix(self, msg: String) -> None:
+        try:
+            payload = json.loads(msg.data)
+        except json.JSONDecodeError as exc:
+            self.get_logger().error(f'Invalid /matrix JSON: {exc}')
+            return
+        mat = np.array(payload.get('matrix'), dtype=float)
+        if mat.shape != (4, 4):
+            self.get_logger().error(
+                f'Matrix shape {mat.shape}, expected (4,4).')
+            return
+        self._matrix = mat
+        self.get_logger().info('Received transform matrix on /matrix.')
 
     def _delete_then_spawn(self) -> None:
         if not self._delete_cli.wait_for_service(timeout_sec=5.0):
