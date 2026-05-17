@@ -33,6 +33,7 @@ setup(
             'graph_client=robot_task.graph_client:main',
             'task_manager=robot_task.task_manager:main',
             'task_generator=robot_task.task_generator:main',
+            'task_representer=robot_task.task_representer:main',
         ],
     },
 )

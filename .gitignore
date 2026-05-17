@@ -11,3 +11,6 @@ log/
 
 # Python cache
 __pycache__/
+
+# Template
+template/

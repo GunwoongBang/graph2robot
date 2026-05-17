@@ -29,6 +29,7 @@ class TaskDistributor(Node):
         self._marker_diameter = float(
             self.get_parameter('marker_diameter').value)
 
+        # === Topic publishers and subscribers ===
         latched_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.RELIABLE,

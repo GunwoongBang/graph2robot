@@ -29,10 +29,13 @@ class WorldSpawner(Node):
 
         package_share = Path(get_package_share_directory('robot_gazebo'))
         self._sdf_path = package_share / 'models' / 'worlds' / 'ifc_world.sdf'
+
         self._ifc_models = self._extract_ifc_models()
 
+        # === Service publishers and clients ===
         self._spawn_cli = self.create_client(SpawnEntity, '/spawn_entity')
 
+        # === Topic publishers and subscribers ===
         latched_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.RELIABLE,

@@ -1,5 +1,4 @@
 import json
-import os
 import yaml
 import rclpy
 import numpy as np
@@ -23,6 +22,7 @@ class TaskManager(Node):
         package_share = Path(get_package_share_directory('robot_task'))
         self._matrix_yaml = package_share / 'config' / 'transform_matrix.yaml'
 
+        # === Topic publishers and subscribers ===
         latched_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.RELIABLE,

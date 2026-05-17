@@ -18,12 +18,12 @@ class PointCloudPublisher(Node):
         super().__init__('pointcloud_publisher')
 
         package_share = Path(get_package_share_directory('robot_rviz'))
+        self._pcd_path = package_share / 'models' / 'cloudGlobal_cleaned_excluded.pcd'
 
         self.declare_parameter('frame_id', 'world')
-
-        self._pcd_path = package_share / 'models' / 'cloudGlobal_cleaned_excluded.pcd'
         self._frame_id = self.get_parameter('frame_id').value
 
+        # === Topic publishers and subscribers ===
         latched_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.RELIABLE,

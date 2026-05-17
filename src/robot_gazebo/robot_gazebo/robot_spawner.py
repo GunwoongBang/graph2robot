@@ -27,11 +27,14 @@ class RobotSpawner(Node):
 
         package_share = Path(get_package_share_directory('robot_gazebo'))
         self._urdf_path = package_share / 'models' / 'robots' / 'husky_ur5e.urdf'
+
         self._urdf_xml = self._load_urdf()
 
+        # === Service publishers and clients ===
         self._spawn_cli = self.create_client(SpawnEntity, '/spawn_entity')
         self._delete_cli = self.create_client(DeleteEntity, '/delete_entity')
 
+        # === Topic publishers and subscribers ===
         latched_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.RELIABLE,

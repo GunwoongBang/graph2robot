@@ -39,11 +39,13 @@ class GraphServer(Node):
                 self.get_logger().error(
                     f'Failed to connect to Neo4j at {uri}: {exc}.')
 
+        # === Service publishers and clients ===
+        # MEP Elements
         self._mep_elements_srv = self.create_service(
             Trigger, '/graph/list_mep_elements', self._handle_list_mep_elements)
         self.get_logger().info(
             'Service ready: /graph/list_mep_elements (std_srvs/Trigger)')
-
+        # Walls
         self._walls_srv = self.create_service(
             Trigger, '/graph/list_walls', self._handle_list_walls)
         self.get_logger().info(

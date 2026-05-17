@@ -15,6 +15,7 @@ class TaskGenerator(Node):
     def __init__(self) -> None:
         super().__init__('task_generator')
 
+        # === Topic publishers and subscribers ===
         latched_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.RELIABLE,

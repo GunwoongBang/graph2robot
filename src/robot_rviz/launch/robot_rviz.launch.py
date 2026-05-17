@@ -11,6 +11,7 @@ def generate_launch_description() -> LaunchDescription:
 
     pointcloud_publisher_node = Node(
         package='robot_rviz',
+        namespace='robot_rviz',
         executable='pointcloud_publisher',
         name='pointcloud_publisher',
         output='screen',
@@ -18,6 +19,7 @@ def generate_launch_description() -> LaunchDescription:
 
     task_distributor_node = Node(
         package='robot_rviz',
+        namespace='robot_rviz',
         executable='task_distributor',
         name='task_distributor',
         output='screen',

@@ -34,6 +34,7 @@ def generate_launch_description() -> LaunchDescription:
 
     world_spawner = Node(
         package='robot_gazebo',
+        namespace='robot_gazebo',
         executable='world_spawner',
         name='world_spawner',
         output='screen',
@@ -41,6 +42,7 @@ def generate_launch_description() -> LaunchDescription:
 
     robot_spawner = Node(
         package='robot_gazebo',
+        namespace='robot_gazebo',
         executable='robot_spawner',
         name='robot_spawner',
         output='screen',

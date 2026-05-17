@@ -77,7 +77,7 @@ Visualization Manager:
     - Class: rviz_default_plugins/InteractiveMarkers
       Enable Transparency: true
       Enabled: true
-      Interactive Markers Namespace: /task
+      Interactive Markers Namespace: /robot_rviz/task
       Name: InteractiveMarkers
       Show Axes: false
       Show Descriptions: true
