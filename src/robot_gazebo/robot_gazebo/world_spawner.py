@@ -33,6 +33,7 @@ class WorldSpawner(Node):
         self._ifc_models = self._extract_ifc_models()
 
         # === Service publishers and clients ===
+        # Clients
         self._spawn_cli = self.create_client(SpawnEntity, '/spawn_entity')
 
         # === Topic publishers and subscribers ===
@@ -42,6 +43,7 @@ class WorldSpawner(Node):
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
         )
+        # Subscribers
         self._matrix_sub = self.create_subscription(
             String, '/matrix', self._on_matrix, latched_qos)
 
@@ -82,6 +84,7 @@ class WorldSpawner(Node):
             self.get_logger().error(
                 f'Matrix shape {mat.shape}, expected (4,4).')
             return
+        self.get_logger().info('Received transform matrix on /matrix.')
 
         x, y, z = float(mat[0, 3]), float(mat[1, 3]), float(mat[2, 3])
         R = mat[:3, :3]

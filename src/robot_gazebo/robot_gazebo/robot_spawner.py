@@ -27,10 +27,10 @@ class RobotSpawner(Node):
 
         package_share = Path(get_package_share_directory('robot_gazebo'))
         self._urdf_path = package_share / 'models' / 'robots' / 'husky_ur5e.urdf'
-
         self._urdf_xml = self._load_urdf()
 
         # === Service publishers and clients ===
+        # Clients
         self._spawn_cli = self.create_client(SpawnEntity, '/spawn_entity')
         self._delete_cli = self.create_client(DeleteEntity, '/delete_entity')
 
@@ -41,12 +41,13 @@ class RobotSpawner(Node):
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
         )
-
-        self._drilling_position_sub = self.create_subscription(
-            String, '/task/drilling_position', self._on_drilling_position, latched_qos)
+        # Subscribers
+        self._target_position_sub = self.create_subscription(
+            String, '/task/target_position', self._on_target_position, latched_qos)
         self._matrix_sub = self.create_subscription(
             String, '/matrix', self._on_matrix, latched_qos
         )
+
         self._busy = False
         self._pending_pose: Pose | None = None
         self._post_spawn_timer = None
@@ -59,10 +60,10 @@ class RobotSpawner(Node):
         with open(self._urdf_path, 'r') as f:
             return f.read()
 
-    def _on_drilling_position(self, msg: String) -> None:
+    def _on_target_position(self, msg: String) -> None:
         if self._busy:
             self.get_logger().warn(
-                'Spawn/drill cycle in progress; ignoring new /task/drilling_position.')
+                'Spawn/drill cycle in progress; ignoring new /task/target_position.')
             return
         if self._matrix is None:
             self.get_logger().warn(
@@ -72,9 +73,9 @@ class RobotSpawner(Node):
             payload = json.loads(msg.data)
         except json.JSONDecodeError as exc:
             self.get_logger().error(
-                f'Invalid /task/drilling_position JSON: {exc}')
+                f'Invalid /task/target_position JSON: {exc}')
             return
-        d = payload.get('drilling_position') or {}
+        d = payload.get('target_position') or {}
 
         # IFC -> cloud frame: apply full 4x4 to position, rotation block to heading.
         ifc_pos = np.array(
@@ -101,7 +102,7 @@ class RobotSpawner(Node):
         self._pending_pose = pose
         self._busy = True
         self.get_logger().info(
-            f'Drilling target (cloud frame): pos=({pose.position.x:.3f}, '
+            f'Target position (cloud frame): pos=({pose.position.x:.3f}, '
             f'{pose.position.y:.3f}, {pose.position.z:.3f}) yaw={yaw:.3f} rad.')
         self._delete_then_spawn()
 

@@ -41,3 +41,11 @@ Schritt fuer Schritt
     - robot working area (sphere)
     - affordances
 - when a task is clicked, the task node is connected with the target node during the execution then disconnected
+
+`task_representer` subscribes data (`/selected_element`, `/mep_elements` and `/target_position`) and serve a service
+After receiving a request from `task_distributor`, it creates a virtual sphere with a radius (800mm: ur5e, may differ with different robots)
+and a center of the sphere. then `task_distributer` gets the sphere and filter the points (`/cloud`) out by calculating the intersecting area (the wall points that are inside the sphere). and then it translates the points' position with `/matrix` and publishes the points with blue color in rviz2.
+
+### Task evaluator
+`task_evaluator` receives the topic `/ifc/mep_elements` and `/task/selected_element`
+From the selected_element, it gets the target wall (on which the drilling is performed) and [method, idk yet]. Finally, it creates a list of mep_elements on a topic `/task/filtered_elements` and also publishes a topic `/task/target_wall` so the `task_representer` does not have to check which wall it should work on.

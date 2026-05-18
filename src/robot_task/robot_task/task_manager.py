@@ -14,13 +14,15 @@ from rclpy.qos import (
 )
 from std_msgs.msg import String
 
+MATRIX_FILENAME = 'transform_matrix.yaml'
+
 
 class TaskManager(Node):
     def __init__(self) -> None:
         super().__init__('task_manager')
 
         package_share = Path(get_package_share_directory('robot_task'))
-        self._matrix_yaml = package_share / 'config' / 'transform_matrix.yaml'
+        self._matrix_yaml = package_share / 'config' / MATRIX_FILENAME
 
         # === Topic publishers and subscribers ===
         latched_qos = QoSProfile(
@@ -29,17 +31,18 @@ class TaskManager(Node):
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
         )
-
+        # Publishers
+        self._mep_element_pub = self.create_publisher(
+            String, '/ifc/mep_elements', latched_qos)
+        self._wall_pub = self.create_publisher(
+            String, '/ifc/walls', latched_qos)
+        self._matrix_pub = self.create_publisher(
+            String, '/matrix', latched_qos)
+        # Subscribers
         self._mep_elements_sub = self.create_subscription(
             String, '/mep_elements', self._on_mep_elements, latched_qos)
         self._wall_sub = self.create_subscription(
             String, '/walls', self._on_walls, latched_qos)
-        self._mep_elements_pub = self.create_publisher(
-            String, '/task/mep_elements', latched_qos)
-        self._walls_pub = self.create_publisher(
-            String, '/task/walls', latched_qos)
-        self._matrix_pub = self.create_publisher(
-            String, '/matrix', latched_qos)
 
         self._mep_elements: list[dict] | None = None
         self._walls: list[dict] | None = None
@@ -53,7 +56,7 @@ class TaskManager(Node):
             return
         self.get_logger().info(
             f'Received {len(self._mep_elements)} MEP elements on /mep_elements.')
-        self.publish_task()
+        self.publish_mep_elements()
 
     def _on_walls(self, msg: String) -> None:
         try:
@@ -82,18 +85,18 @@ class TaskManager(Node):
                 f'Failed to load transform matrix: {exc}; using identity.')
             return np.eye(4, dtype=float)
 
-    def publish_task(self) -> None:
+    def publish_mep_elements(self) -> None:
         if not self._mep_elements:
             return
         payload = {
             'count': len(self._mep_elements),
-            'tasks': self._mep_elements,
+            'mep_elements': self._mep_elements,
         }
         msg = String()
         msg.data = json.dumps(payload)
-        self._mep_elements_pub.publish(msg)
+        self._mep_element_pub.publish(msg)
         self.get_logger().info(
-            f'Published {len(self._mep_elements)} MEP elements on /task/mep_elements.')
+            f'Published {len(self._mep_elements)} MEP elements on /ifc/mep_elements.')
 
     def publish_walls(self) -> None:
         if not self._walls:
@@ -104,9 +107,9 @@ class TaskManager(Node):
         }
         msg = String()
         msg.data = json.dumps(payload)
-        self._walls_pub.publish(msg)
+        self._wall_pub.publish(msg)
         self.get_logger().info(
-            f'Published {len(self._walls)} walls on /task/walls.')
+            f'Published {len(self._walls)} walls on /ifc/walls.')
 
     def publish_matrix(self) -> None:
         payload = {

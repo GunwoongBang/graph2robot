@@ -25,6 +25,14 @@ def generate_launch_description() -> LaunchDescription:
         output='screen',
     )
 
+    task_representer_node = Node(
+        package='robot_rviz',
+        namespace='robot_rviz',
+        executable='task_representer',
+        name='task_representer',
+        output='screen',
+    )
+
     rviz = ExecuteProcess(
         cmd=['rviz2', '-d', rviz_config],
         output='screen',
@@ -33,5 +41,6 @@ def generate_launch_description() -> LaunchDescription:
     return LaunchDescription([
         pointcloud_publisher_node,
         task_distributor_node,
+        task_representer_node,
         rviz,
     ])

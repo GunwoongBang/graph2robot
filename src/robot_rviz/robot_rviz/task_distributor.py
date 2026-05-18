@@ -13,6 +13,7 @@ from rclpy.qos import (
 from sensor_msgs.msg import PointCloud2
 from sensor_msgs_py import point_cloud2
 from std_msgs.msg import String
+from std_srvs.srv import Trigger
 from visualization_msgs.msg import (
     InteractiveMarker,
     InteractiveMarkerControl,
@@ -29,6 +30,11 @@ class TaskDistributor(Node):
         self._marker_diameter = float(
             self.get_parameter('marker_diameter').value)
 
+        # === Service servers and clients ===
+        # Clients
+        self._task_representer_cli = self.create_client(
+            Trigger, '/task_representer/update')
+
         # === Topic publishers and subscribers ===
         latched_qos = QoSProfile(
             depth=1,
@@ -36,25 +42,26 @@ class TaskDistributor(Node):
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
         )
-
+        # Publishers
+        self._selected_element_pub = self.create_publisher(
+            String, '/task/selected_element', latched_qos)
+        # Subscribers
         self._cloud_sub = self.create_subscription(
             PointCloud2, '/cloud', self._on_cloud, latched_qos)
-        self._task_sub = self.create_subscription(
-            String, '/task/mep_elements', self._on_task, latched_qos)
-        self._walls_sub = self.create_subscription(
-            String, '/task/walls', self._on_walls, latched_qos)
+        self._mep_element_sub = self.create_subscription(
+            String, '/ifc/mep_elements', self._on_mep_elements, latched_qos)
+        self._wall_sub = self.create_subscription(
+            String, '/ifc/walls', self._on_walls, latched_qos)
         self._matrix_sub = self.create_subscription(
             String, '/matrix', self._on_matrix, latched_qos)
-        self._selected_task_pub = self.create_publisher(
-            String, '/task/selected_task', latched_qos)
-        self._selected_task_sub = self.create_subscription(
-            String, '/task/selected_task', self._on_selected_task, latched_qos)
+        self._selected_element_sub = self.create_subscription(
+            String, '/task/selected_element', self._on_selected_element, latched_qos)
 
         self._marker_server = InteractiveMarkerServer(self, 'task')
 
         self._cloud: np.ndarray | None = None
         self._frame_id: str = 'world'
-        self._tasks: list[dict] | None = None
+        self._mep_elements: list[dict] | None = None
         self._walls: list[dict] | None = None
         self._matrix: np.ndarray | None = None
         self._element_index: dict[str, dict] = {}
@@ -73,26 +80,34 @@ class TaskDistributor(Node):
             f'Received cloud with {len(self._cloud)} points on /cloud (frame_id={self._frame_id}).')
         self._try_process()
 
-    def _on_task(self, msg: String) -> None:
+    def _on_mep_elements(self, msg: String) -> None:
         try:
             payload = json.loads(msg.data)
         except json.JSONDecodeError as exc:
-            self.get_logger().error(f'Invalid /task JSON: {exc}')
+            self.get_logger().error(f'Invalid /ifc/mep_elements JSON: {exc}')
             return
-        self._tasks = payload.get('tasks', [])
+        self._mep_elements = payload.get('mep_elements', [])
+        if self._mep_elements is None:
+            self.get_logger().warn(
+                '/ifc/mep_elements had no "mep_elements" field.')
+            return
         self.get_logger().info(
-            f'Received {len(self._tasks)} tasks on /task.')
+            f'Received {len(self._mep_elements)} tasks on /ifc/mep_elements.')
         self._try_process()
 
     def _on_walls(self, msg: String) -> None:
         try:
             payload = json.loads(msg.data)
         except json.JSONDecodeError as exc:
-            self.get_logger().error(f'Invalid /task/walls JSON: {exc}')
+            self.get_logger().error(f'Invalid /ifc/walls JSON: {exc}')
             return
         self._walls = payload.get('walls', [])
+        if self._walls is None:
+            self.get_logger().warn(
+                '/ifc/walls had no "walls" field.')
+            return
         self.get_logger().info(
-            f'Received {len(self._walls)} walls on /task/walls.')
+            f'Received {len(self._walls)} walls on /ifc/walls.')
 
     def _on_matrix(self, msg: String) -> None:
         try:
@@ -109,12 +124,12 @@ class TaskDistributor(Node):
         self.get_logger().info('Received transform matrix on /matrix.')
         self._try_process()
 
-    def _on_selected_task(self, msg: String) -> None:
+    def _on_selected_element(self, msg: String) -> None:
         try:
             payload = json.loads(msg.data)
         except json.JSONDecodeError as exc:
             self.get_logger().error(
-                f'Invalid /task/selected_task JSON: {exc}')
+                f'Invalid /task/selected_element JSON: {exc}')
             return
         new_id = (payload.get('task') or {}).get('id')
         if new_id == self._selected_id:
@@ -123,7 +138,7 @@ class TaskDistributor(Node):
         self._redraw_markers()
 
     def _try_process(self) -> None:
-        if self._cloud is None or self._tasks is None or self._matrix is None:
+        if self._cloud is None or self._mep_elements is None or self._matrix is None:
             return
         if len(self._cloud) == 0:
             self.get_logger().warn('Empty point cloud; skipping.')
@@ -133,7 +148,7 @@ class TaskDistributor(Node):
         self._element_index.clear()
         self._marker_positions.clear()
 
-        for element in self._tasks:
+        for element in self._mep_elements:
             center = element.get('center')
             element_id = element.get('id')
             if center is None or len(center) != 3 or not element_id:
@@ -213,9 +228,9 @@ class TaskDistributor(Node):
             return
         msg = String()
         msg.data = json.dumps({'task': element})
-        self._selected_task_pub.publish(msg)
+        self._selected_element_pub.publish(msg)
         self.get_logger().info(
-            f"Selected task on /task/selected_task: id={element['id']}")
+            f"Selected task on /task/selected_element: id={element['id']}")
 
 
 def main() -> None:

@@ -36,6 +36,7 @@ setup(
         'console_scripts': [
             'pointcloud_publisher=robot_rviz.pointcloud_publisher:main',
             'task_distributor=robot_rviz.task_distributor:main',
+            'task_representer=robot_rviz.task_representer:main',
         ],
     },
 )

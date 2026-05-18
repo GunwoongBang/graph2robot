@@ -22,49 +22,53 @@ class TaskGenerator(Node):
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
         )
-
-        self._selected_task_sub = self.create_subscription(
-            String, '/task/selected_task', self._on_selected_task, latched_qos)
-        self._walls_sub = self.create_subscription(
-            String, '/task/walls', self._on_walls, latched_qos)
-        self._drilling_position_pub = self.create_publisher(
-            String, '/task/drilling_position', latched_qos)
+        # Publishers
+        self._target_position_pub = self.create_publisher(
+            String, '/task/target_position', latched_qos)
+        # Subscribers
+        self._selected_element_sub = self.create_subscription(
+            String, '/task/selected_element', self._on_selected_element, latched_qos)
+        self._wall_sub = self.create_subscription(
+            String, '/ifc/walls', self._on_walls, latched_qos)
 
         self._selected_element: dict | None = None
         self._walls: list[dict] | None = None
 
-    def _on_selected_task(self, msg: String) -> None:
+    def _on_selected_element(self, msg: String) -> None:
         try:
             payload = json.loads(msg.data)
         except json.JSONDecodeError as exc:
             self.get_logger().error(
-                f'Invalid /task/selected_task JSON: {exc}')
+                f'Invalid /task/selected_element JSON: {exc}')
             return
         self._selected_element = payload.get('task')
         if self._selected_element is None:
-            self.get_logger().warn('/task/selected_task had no "task" field.')
+            self.get_logger().warn('/task/selected_element had no "task" field.')
             return
         self.get_logger().info(
             f"Selected task: name='{self._selected_element.get('name', '')}' "
             f"id={self._selected_element.get('id', '')}")
-        self.publish_drilling_position()
+        self.publish_target_position()
 
     def _on_walls(self, msg: String) -> None:
         try:
             payload = json.loads(msg.data)
         except json.JSONDecodeError as exc:
-            self.get_logger().error(f'Invalid /task/walls JSON: {exc}')
+            self.get_logger().error(f'Invalid /ifc/walls JSON: {exc}')
             return
         self._walls = payload.get('walls', [])
+        if self._walls is None:
+            self.get_logger().warn('/ifc/walls had no "walls" field.')
+            return
         self.get_logger().info(
-            f'Received {len(self._walls)} walls on /task/walls.')
+            f'Received {len(self._walls)} walls on /ifc/walls.')
 
-    def publish_drilling_position(self) -> None:
+    def publish_target_position(self) -> None:
         if self._selected_element is None:
             return
         if self._walls is None:
             self.get_logger().warn(
-                '/task/walls not yet received; cannot compute drilling position.')
+                '/ifc/walls not yet received; cannot compute drilling position.')
             return
 
         center = self._selected_element.get('center')
@@ -87,7 +91,7 @@ class TaskGenerator(Node):
         wall = next((w for w in self._walls if w.get('id') == wall_id), None)
         if wall is None:
             self.get_logger().warn(
-                f'Wall id={wall_id} not found in cached /task/walls.')
+                f'Wall id={wall_id} not found in cached /ifc/walls.')
             return
         axis2 = wall.get('axis2')
         if axis2 is None or len(axis2) != 3:
@@ -131,7 +135,7 @@ class TaskGenerator(Node):
 
         payload = {
             'count': 1,
-            'drilling_position': {
+            'target_position': {
                 'x': float(ifc_xy[0]),
                 'y': float(ifc_xy[1]),
                 'z': 0.0,
@@ -141,9 +145,9 @@ class TaskGenerator(Node):
         }
         msg = String()
         msg.data = json.dumps(payload)
-        self._drilling_position_pub.publish(msg)
+        self._target_position_pub.publish(msg)
         self.get_logger().info(
-            f'Published IFC-frame drilling position on /task/drilling_position: '
+            f'Published IFC-frame target position on /task/target_position: '
             f'pos=({ifc_xy[0]:.3f}, {ifc_xy[1]:.3f}, 0.000) heading=({hx:.3f}, {hy:.3f}).')
 
 

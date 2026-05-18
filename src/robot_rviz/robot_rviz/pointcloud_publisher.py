@@ -12,13 +12,15 @@ from rclpy.qos import (
 )
 from sensor_msgs.msg import PointCloud2, PointField
 
+PCD_FILENAME = 'cloudGlobal_cleaned_excluded.pcd'
+
 
 class PointCloudPublisher(Node):
     def __init__(self) -> None:
         super().__init__('pointcloud_publisher')
 
         package_share = Path(get_package_share_directory('robot_rviz'))
-        self._pcd_path = package_share / 'models' / 'cloudGlobal_cleaned_excluded.pcd'
+        self._pcd_path = package_share / 'models' / PCD_FILENAME
 
         self.declare_parameter('frame_id', 'world')
         self._frame_id = self.get_parameter('frame_id').value
@@ -30,7 +32,7 @@ class PointCloudPublisher(Node):
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
         )
-
+        # Publishers
         self._cloud_pub = self.create_publisher(
             PointCloud2, '/cloud', latched_qos)
 

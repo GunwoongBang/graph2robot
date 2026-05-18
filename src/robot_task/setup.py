@@ -11,7 +11,7 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/launch', [
-            'launch/robot_task.launch.py',
+            'launch/drilling_task.launch.py',
         ]),
         ('share/' + package_name + '/config', [
             'config/transform_matrix.yaml',
@@ -33,7 +33,7 @@ setup(
             'graph_client=robot_task.graph_client:main',
             'task_manager=robot_task.task_manager:main',
             'task_generator=robot_task.task_generator:main',
-            'task_representer=robot_task.task_representer:main',
+            'task_evaluator=robot_task.task_evaluator:main',
         ],
     },
 )

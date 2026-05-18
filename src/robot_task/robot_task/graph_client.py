@@ -17,20 +17,21 @@ class GraphClient(Node):
     def __init__(self) -> None:
         super().__init__('graph_client')
 
-        # === Service publishers and clients ===
+        # === Service servers and clients ===
+        # Clients
         self._mep_elements_cli = self.create_client(
             Trigger, '/graph/list_mep_elements')
         self._walls_cli = self.create_client(
             Trigger, '/graph/list_walls')
 
-        # Topic publishers and subscribers
+        # === Topic publishers and subscribers ===
         latched_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
         )
-
+        # Publishers
         self._mep_elements_pub = self.create_publisher(
             String, '/mep_elements', latched_qos)
         self._walls_pub = self.create_publisher(
