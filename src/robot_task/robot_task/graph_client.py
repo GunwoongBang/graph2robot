@@ -19,10 +19,12 @@ class GraphClient(Node):
 
         # === Service servers and clients ===
         # Clients
-        self._mep_elements_cli = self.create_client(
-            Trigger, '/graph/list_mep_elements')
-        self._walls_cli = self.create_client(
+        self._space_cli = self.create_client(
+            Trigger, '/graph/list_spaces')
+        self._wall_cli = self.create_client(
             Trigger, '/graph/list_walls')
+        self._mep_element_cli = self.create_client(
+            Trigger, '/graph/list_mep_elements')
 
         # === Topic publishers and subscribers ===
         latched_qos = QoSProfile(
@@ -32,30 +34,42 @@ class GraphClient(Node):
             history=HistoryPolicy.KEEP_LAST,
         )
         # Publishers
-        self._mep_elements_pub = self.create_publisher(
-            String, '/mep_elements', latched_qos)
-        self._walls_pub = self.create_publisher(
+        self._space_pub = self.create_publisher(
+            String, '/spaces', latched_qos)
+        self._wall_pub = self.create_publisher(
             String, '/walls', latched_qos)
+        self._mep_element_pub = self.create_publisher(
+            String, '/mep_elements', latched_qos)
 
-    def request_mep_elements(self, wait_timeout_sec: float = 10.0) -> None:
+    def request_spaces(self, wait_timeout_sec: float = 10.0) -> None:
         self.get_logger().info(
-            'Waiting for /graph/list_mep_elements service...')
-        if not self._mep_elements_cli.wait_for_service(timeout_sec=wait_timeout_sec):
+            'Waiting for /graph/list_spaces service...')
+        if not self._space_cli.wait_for_service(timeout_sec=wait_timeout_sec):
             self.get_logger().error(
-                f'Service /graph/list_mep_elements not available after {wait_timeout_sec}s; abort.')
+                f'Service /graph/list_spaces not available after {wait_timeout_sec}s; abort.')
             return
-        future = self._mep_elements_cli.call_async(Trigger.Request())
-        future.add_done_callback(self._handle_mep_elements_response)
+        future = self._space_cli.call_async(Trigger.Request())
+        future.add_done_callback(self._handle_spaces_response)
 
     def request_walls(self, wait_timeout_sec: float = 10.0) -> None:
         self.get_logger().info(
             'Waiting for /graph/list_walls service...')
-        if not self._walls_cli.wait_for_service(timeout_sec=wait_timeout_sec):
+        if not self._wall_cli.wait_for_service(timeout_sec=wait_timeout_sec):
             self.get_logger().error(
                 f'Service /graph/list_walls not available after {wait_timeout_sec}s; abort.')
             return
-        future = self._walls_cli.call_async(Trigger.Request())
+        future = self._wall_cli.call_async(Trigger.Request())
         future.add_done_callback(self._handle_walls_response)
+
+    def request_mep_elements(self, wait_timeout_sec: float = 10.0) -> None:
+        self.get_logger().info(
+            'Waiting for /graph/list_mep_elements service...')
+        if not self._mep_element_cli.wait_for_service(timeout_sec=wait_timeout_sec):
+            self.get_logger().error(
+                f'Service /graph/list_mep_elements not available after {wait_timeout_sec}s; abort.')
+            return
+        future = self._mep_element_cli.call_async(Trigger.Request())
+        future.add_done_callback(self._handle_mep_elements_response)
 
     def _parse_response(self, future: Future) -> list | None:
         try:
@@ -74,15 +88,15 @@ class GraphClient(Node):
                 f'Invalid JSON in service response: {exc}')
             return None
 
-    def _handle_mep_elements_response(self, future: Future) -> None:
-        elements = self._parse_response(future)
-        if elements is None:
+    def _handle_spaces_response(self, future: Future) -> None:
+        spaces = self._parse_response(future)
+        if spaces is None:
             return
         msg = String()
-        msg.data = json.dumps(elements)
-        self._mep_elements_pub.publish(msg)
+        msg.data = json.dumps(spaces)
+        self._space_pub.publish(msg)
         self.get_logger().info(
-            f'Published {len(elements)} MEP elements on /mep_elements.')
+            f'Published {len(spaces)} spaces on /spaces.')
 
     def _handle_walls_response(self, future: Future) -> None:
         walls = self._parse_response(future)
@@ -90,17 +104,28 @@ class GraphClient(Node):
             return
         msg = String()
         msg.data = json.dumps(walls)
-        self._walls_pub.publish(msg)
+        self._wall_pub.publish(msg)
         self.get_logger().info(
             f'Published {len(walls)} walls on /walls.')
+
+    def _handle_mep_elements_response(self, future: Future) -> None:
+        elements = self._parse_response(future)
+        if elements is None:
+            return
+        msg = String()
+        msg.data = json.dumps(elements)
+        self._mep_element_pub.publish(msg)
+        self.get_logger().info(
+            f'Published {len(elements)} MEP elements on /mep_elements.')
 
 
 def main() -> None:
     rclpy.init()
     node = GraphClient()
     try:
-        node.request_mep_elements()
+        node.request_spaces()
         node.request_walls()
+        node.request_mep_elements()
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass

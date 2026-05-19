@@ -54,9 +54,6 @@ class TaskDistributor(Node):
             String, '/ifc/walls', self._on_walls, latched_qos)
         self._matrix_sub = self.create_subscription(
             String, '/matrix', self._on_matrix, latched_qos)
-        self._selected_element_sub = self.create_subscription(
-            String, '/task/selected_element', self._on_selected_element, latched_qos)
-
         self._marker_server = InteractiveMarkerServer(self, 'task')
 
         self._cloud: np.ndarray | None = None
@@ -124,19 +121,6 @@ class TaskDistributor(Node):
         self.get_logger().info('Received transform matrix on /matrix.')
         self._try_process()
 
-    def _on_selected_element(self, msg: String) -> None:
-        try:
-            payload = json.loads(msg.data)
-        except json.JSONDecodeError as exc:
-            self.get_logger().error(
-                f'Invalid /task/selected_element JSON: {exc}')
-            return
-        new_id = (payload.get('task') or {}).get('id')
-        if new_id == self._selected_id:
-            return
-        self._selected_id = new_id
-        self._redraw_markers()
-
     def _try_process(self) -> None:
         if self._cloud is None or self._mep_elements is None or self._matrix is None:
             return
@@ -149,7 +133,8 @@ class TaskDistributor(Node):
         self._marker_positions.clear()
 
         for element in self._mep_elements:
-            center = element.get('center')
+            wall = element.get('wall') or {}
+            center = wall.get('center')
             element_id = element.get('id')
             if center is None or len(center) != 3 or not element_id:
                 continue
@@ -226,11 +211,14 @@ class TaskDistributor(Node):
             self.get_logger().warn(
                 f'Click on unknown marker: {feedback.marker_name}')
             return
+        if element['id'] != self._selected_id:
+            self._selected_id = element['id']
+            self._redraw_markers()
         msg = String()
-        msg.data = json.dumps({'task': element})
+        msg.data = json.dumps({'selected_element': element})
         self._selected_element_pub.publish(msg)
         self.get_logger().info(
-            f"Selected task on /task/selected_element: id={element['id']}")
+            f"Selected element on /task/selected_element: id={element['id']}")
 
 
 def main() -> None:

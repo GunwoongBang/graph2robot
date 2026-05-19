@@ -32,31 +32,35 @@ class TaskManager(Node):
             history=HistoryPolicy.KEEP_LAST,
         )
         # Publishers
-        self._mep_element_pub = self.create_publisher(
-            String, '/ifc/mep_elements', latched_qos)
+        self._space_pub = self.create_publisher(
+            String, '/ifc/spaces', latched_qos)
         self._wall_pub = self.create_publisher(
             String, '/ifc/walls', latched_qos)
+        self._mep_element_pub = self.create_publisher(
+            String, '/ifc/mep_elements', latched_qos)
         self._matrix_pub = self.create_publisher(
             String, '/matrix', latched_qos)
         # Subscribers
-        self._mep_elements_sub = self.create_subscription(
-            String, '/mep_elements', self._on_mep_elements, latched_qos)
+        self._space_sub = self.create_subscription(
+            String, '/spaces', self._on_spaces, latched_qos)
         self._wall_sub = self.create_subscription(
             String, '/walls', self._on_walls, latched_qos)
+        self._mep_element_sub = self.create_subscription(
+            String, '/mep_elements', self._on_mep_elements, latched_qos)
 
         self._mep_elements: list[dict] | None = None
         self._walls: list[dict] | None = None
         self._transform_matrix = self._load_transform_matrix()
 
-    def _on_mep_elements(self, msg: String) -> None:
+    def _on_spaces(self, msg: String) -> None:
         try:
-            self._mep_elements = json.loads(msg.data)
+            self._spaces = json.loads(msg.data)
         except json.JSONDecodeError as exc:
-            self.get_logger().error(f'Invalid /mep_elements JSON: {exc}')
+            self.get_logger().error(f'Invalid /spaces JSON: {exc}')
             return
         self.get_logger().info(
-            f'Received {len(self._mep_elements)} MEP elements on /mep_elements.')
-        self.publish_mep_elements()
+            f'Received {len(self._spaces)} spaces on /spaces.')
+        self.publish_spaces()
 
     def _on_walls(self, msg: String) -> None:
         try:
@@ -67,6 +71,16 @@ class TaskManager(Node):
         self.get_logger().info(
             f'Received {len(self._walls)} walls on /walls.')
         self.publish_walls()
+
+    def _on_mep_elements(self, msg: String) -> None:
+        try:
+            self._mep_elements = json.loads(msg.data)
+        except json.JSONDecodeError as exc:
+            self.get_logger().error(f'Invalid /mep_elements JSON: {exc}')
+            return
+        self.get_logger().info(
+            f'Received {len(self._mep_elements)} MEP elements on /mep_elements.')
+        self.publish_mep_elements()
 
     def _load_transform_matrix(self) -> np.ndarray:
         if not self._matrix_yaml.exists():
@@ -85,18 +99,18 @@ class TaskManager(Node):
                 f'Failed to load transform matrix: {exc}; using identity.')
             return np.eye(4, dtype=float)
 
-    def publish_mep_elements(self) -> None:
-        if not self._mep_elements:
+    def publish_spaces(self) -> None:
+        if not self._spaces:
             return
         payload = {
-            'count': len(self._mep_elements),
-            'mep_elements': self._mep_elements,
+            'count': len(self._spaces),
+            'spaces': self._spaces,
         }
         msg = String()
         msg.data = json.dumps(payload)
-        self._mep_element_pub.publish(msg)
+        self._space_pub.publish(msg)
         self.get_logger().info(
-            f'Published {len(self._mep_elements)} MEP elements on /ifc/mep_elements.')
+            f'Published {len(self._spaces)} spaces on /spaces.')
 
     def publish_walls(self) -> None:
         if not self._walls:
@@ -110,6 +124,19 @@ class TaskManager(Node):
         self._wall_pub.publish(msg)
         self.get_logger().info(
             f'Published {len(self._walls)} walls on /ifc/walls.')
+
+    def publish_mep_elements(self) -> None:
+        if not self._mep_elements:
+            return
+        payload = {
+            'count': len(self._mep_elements),
+            'mep_elements': self._mep_elements,
+        }
+        msg = String()
+        msg.data = json.dumps(payload)
+        self._mep_element_pub.publish(msg)
+        self.get_logger().info(
+            f'Published {len(self._mep_elements)} MEP elements on /ifc/mep_elements.')
 
     def publish_matrix(self) -> None:
         payload = {

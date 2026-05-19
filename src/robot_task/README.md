@@ -49,3 +49,16 @@ and a center of the sphere. then `task_distributer` gets the sphere and filter t
 ### Task evaluator
 `task_evaluator` receives the topic `/ifc/mep_elements` and `/task/selected_element`
 From the selected_element, it gets the target wall (on which the drilling is performed) and [method, idk yet]. Finally, it creates a list of mep_elements on a topic `/task/filtered_elements` and also publishes a topic `/task/target_wall` so the `task_representer` does not have to check which wall it should work on.
+
+#### With `task_evaluator`
+we'd like to know what mep element we should consider before performing an actual task to remove all the potential jeopardies
+for example, when it comes to drilling, it is really important not to damage other elements which are not visible from human's side
+to do so, `task_evaluator` creates a list of elements that should be taken into consideration using topological information of ifc model
+What Topology then??
+there is a target wall and the wall consists of space(s). Then we inspect all the spaces if they host any mep elements. If they have, we register them in the list 
+
+
+There are three showcases
+1. Drilling a hole for IfcFlowSegment
+2. Drilling holes for IfcBuildingElementProxy (Receptacle)
+3. Drilling a hole in at a random point

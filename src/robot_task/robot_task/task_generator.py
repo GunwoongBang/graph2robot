@@ -41,12 +41,12 @@ class TaskGenerator(Node):
             self.get_logger().error(
                 f'Invalid /task/selected_element JSON: {exc}')
             return
-        self._selected_element = payload.get('task')
+        self._selected_element = payload.get('selected_element')
         if self._selected_element is None:
-            self.get_logger().warn('/task/selected_element had no "task" field.')
+            self.get_logger().warn('/task/selected_element had no "selected_element" field.')
             return
         self.get_logger().info(
-            f"Selected task: name='{self._selected_element.get('name', '')}' "
+            f"Selected element: name='{self._selected_element.get('name', '')}' "
             f"id={self._selected_element.get('id', '')}")
         self.publish_target_position()
 
@@ -71,9 +71,10 @@ class TaskGenerator(Node):
                 '/ifc/walls not yet received; cannot compute drilling position.')
             return
 
-        center = self._selected_element.get('center')
+        wall_obj = self._selected_element.get('wall') or {}
+        center = wall_obj.get('center')
         face = self._selected_element.get('face')
-        wall_id = (self._selected_element.get('wall') or {}).get('id')
+        wall_id = wall_obj.get('id')
 
         if center is None or len(center) != 3:
             self.get_logger().warn(

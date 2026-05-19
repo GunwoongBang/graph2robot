@@ -1,6 +1,7 @@
-from .graph_util import query_mep_elements, query_walls
+from .graph_util import query_spaces, query_walls, query_mep_elements
 
 __all__ = [
-    'query_mep_elements',
+    'query_spaces',
     'query_walls',
+    'query_mep_elements',
 ]
