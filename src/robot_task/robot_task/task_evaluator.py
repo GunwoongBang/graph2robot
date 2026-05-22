@@ -105,10 +105,6 @@ class TaskEvaluator(Node):
         self._refresh_filtered_elements()
 
     def _refresh_filtered_elements(self) -> None:
-        """Filter MEP elements down to those hosted by any space that the
-        target wall bounds. Wall -> spaces (via /ifc/walls), then keep
-        elements whose space_id is in that set.
-        """
         if self._target_wall is None:
             return
         if self._mep_elements is None:
@@ -146,7 +142,7 @@ class TaskEvaluator(Node):
         msg.data = json.dumps(payload)
         self._filtered_elements_pub.publish(msg)
         self.get_logger().info(
-            f'Published {len(self._filtered_elements)} filtered elements on /task/filtered_elements: {payload}')
+            f'Published {len(self._filtered_elements)} filtered elements on /task/filtered_elements.')
 
     def publish_target_wall(self) -> None:
         payload = {

@@ -24,7 +24,7 @@ class TaskGenerator(Node):
         )
         # Publishers
         self._target_position_pub = self.create_publisher(
-            String, '/task/target_position', latched_qos)
+            String, '/robot/target_position', latched_qos)
         # Subscribers
         self._selected_element_sub = self.create_subscription(
             String, '/task/selected_element', self._on_selected_element, latched_qos)

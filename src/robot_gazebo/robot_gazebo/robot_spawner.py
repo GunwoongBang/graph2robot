@@ -43,7 +43,7 @@ class RobotSpawner(Node):
         )
         # Subscribers
         self._target_position_sub = self.create_subscription(
-            String, '/task/target_position', self._on_target_position, latched_qos)
+            String, '/robot/target_position', self._on_target_position, latched_qos)
         self._matrix_sub = self.create_subscription(
             String, '/matrix', self._on_matrix, latched_qos
         )

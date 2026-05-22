@@ -26,7 +26,7 @@ class TaskDistributor(Node):
     def __init__(self) -> None:
         super().__init__('task_distributor')
 
-        self.declare_parameter('marker_diameter', 0.2)
+        self.declare_parameter('marker_diameter', 0.1)
         self._marker_diameter = float(
             self.get_parameter('marker_diameter').value)
 

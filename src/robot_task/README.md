@@ -20,6 +20,9 @@ task_generator
     - z position (can be extracted from the transformation matrix maybe and there is the /matrix task that we can make use of)
 - so finally the node `task_generator` publishes a topic called `/drilling_position` that contains (x, y, z) where the robot should be located when a task is clicked
 
+The current `target_position` (renamed from `drilling_position`) has a limitation that when a user clicked on a unverified element as a task, the roobt is spawned in a wrong position, leading the robot stuck in a wall. This is mainly because the robot's position as well as the orientation depend on the target wall's face but it is too comlicated to rely solely on it, especially when it comes to a wall with mep elements on both side.
+-> Try to connect the position with its spacial location. Need to know which room the target mep element is lying in and set the drilling position according to its spacial containment. Luckily we have all the infomration required for this implementation :)
+
 Schritt fuer Schritt
 1. first, retrieve the center point (done already) (DONE)
 2. graph_client asks for wall information to graph_server (DONE)

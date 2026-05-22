@@ -34,12 +34,27 @@ WITH me, head([x IN s_raw WHERE x IS NOT NULL]) AS space
 OPTIONAL MATCH (w:Wall)-[p:PENETRATED_BY]->(me)
 WITH me, space,
      collect(CASE WHEN w IS NULL THEN NULL ELSE {
-         id: w.id, center: p.penetrationCenter
+         id: w.id,
+         center: p.penetrationCenter,
+         length: p.penetrationLength,
+         radius: p.penetrationRadius,
+         sizeX: p.penetrationSizeX,
+         sizeY: p.penetrationSizeY,
+         sizeZ: p.penetrationSizeZ
      } END) AS w_raw
 WITH me, space, head([x IN w_raw WHERE x IS NOT NULL]) AS wall
 RETURN me.id AS id,
        me.name AS name,
        me.face AS face,
+       me.center AS center,
+       me.bbox_max AS bbox_max,
+       me.bbox_min AS bbox_min,
+       me.length AS length,
+       me.radius AS radius,
+       me.sizeX AS sizeX,
+       me.sizeY AS sizeY,
+       me.sizeZ AS sizeZ,
+       me.shapeType AS shapeType,
        wall,
        space
 ORDER BY me.name
@@ -80,6 +95,15 @@ def query_mep_elements(driver: Driver, limit: int) -> list[dict[str, Any]]:
                 'id': record['id'],
                 'name': record['name'],
                 'face': record['face'],
+                'center': record['center'],
+                'bbox_max': record['bbox_max'],
+                'bbox_min': record['bbox_min'],
+                'length': record['length'],
+                'radius': record['radius'],
+                'sizeX': record['sizeX'],
+                'sizeY': record['sizeY'],
+                'sizeZ': record['sizeZ'],
+                'shapeType': record['shapeType'],
                 'wall': record['wall'],
                 'space': record['space'],
             })
