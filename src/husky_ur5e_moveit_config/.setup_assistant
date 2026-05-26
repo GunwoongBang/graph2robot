@@ -1,0 +1,25 @@
+moveit_setup_assistant_config:
+  urdf:
+    package: robot_gazebo
+    relative_path: models/robots/husky_ur5e.urdf
+  srdf:
+    relative_path: config/husky_ur5e.srdf
+  package_settings:
+    author_name: gunwoong
+    author_email: gw.bang@tum.de
+    generated_timestamp: 1779730369
+  control_xacro:
+    command:
+      - position
+    state:
+      - position
+      - velocity
+  modified_urdf:
+    xacros:
+      - control_xacro
+  control_xacro:
+    command:
+      - position
+    state:
+      - position
+      - velocity

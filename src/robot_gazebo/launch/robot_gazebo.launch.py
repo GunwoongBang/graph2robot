@@ -13,6 +13,7 @@ def generate_launch_description() -> LaunchDescription:
     os.environ['GAZEBO_MODEL_PATH'] = os.pathsep.join(filter(None, [
         os.environ.get('GAZEBO_MODEL_PATH', ''),
         os.path.join(package_share, 'models', 'robots'),
+        os.path.dirname(package_share),
     ]))
 
     empty_world = os.path.join(
