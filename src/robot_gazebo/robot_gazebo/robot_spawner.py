@@ -2,8 +2,6 @@ import json
 import rclpy
 import numpy as np
 
-from pathlib import Path
-from ament_index_python.packages import get_package_share_directory
 from rclpy.node import Node
 from rclpy.qos import (
     DurabilityPolicy,
@@ -14,7 +12,8 @@ from rclpy.qos import (
 from rclpy.task import Future
 from std_msgs.msg import String
 from gazebo_msgs.srv import DeleteEntity, SpawnEntity
-from geometry_msgs.msg import Pose
+from geometry_msgs.msg import Pose, TransformStamped
+from tf2_ros import StaticTransformBroadcaster
 
 
 ENTITY_NAME = 'husky_ur5e'
@@ -25,9 +24,7 @@ class RobotSpawner(Node):
     def __init__(self) -> None:
         super().__init__('robot_spawner')
 
-        package_share = Path(get_package_share_directory('robot_gazebo'))
-        self._urdf_path = package_share / 'models' / 'robots' / 'husky_ur5e.urdf'
-        self._urdf_xml = self._load_urdf()
+        self._urdf_xml: str = ''
 
         # === Service publishers and clients ===
         # Clients
@@ -41,9 +38,22 @@ class RobotSpawner(Node):
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
         )
+        # /robot/target_position is consumed only as a fresh event: ignore
+        # any latched payload from a previous session.
+        volatile_qos = QoSProfile(
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.VOLATILE,
+            history=HistoryPolicy.KEEP_LAST,
+        )
         # Subscribers
+        # robot_state_publisher publishes the xacro-processed URDF here. We
+        # use the same string Gazebo's gazebo_ros2_control + MoveIt consume,
+        # so the spawned model carries the ros2_control + gazebo plugin tags.
+        self._robot_description_sub = self.create_subscription(
+            String, '/robot_description', self._on_robot_description, latched_qos)
         self._target_position_sub = self.create_subscription(
-            String, '/robot/target_position', self._on_target_position, latched_qos)
+            String, '/robot/target_position', self._on_target_position, volatile_qos)
         self._matrix_sub = self.create_subscription(
             String, '/matrix', self._on_matrix, latched_qos
         )
@@ -52,22 +62,26 @@ class RobotSpawner(Node):
         self._pending_pose: Pose | None = None
         self._post_spawn_timer = None
         self._matrix: np.ndarray | None = None
+        self._tf_broadcaster = StaticTransformBroadcaster(self)
 
-    def _load_urdf(self) -> str:
-        if not self._urdf_path.exists():
-            self.get_logger().error(f'URDF not found at {self._urdf_path}.')
-            return ''
-        with open(self._urdf_path, 'r') as f:
-            return f.read()
+    def _on_robot_description(self, msg: String) -> None:
+        if not self._urdf_xml:
+            self.get_logger().info(
+                f'Received URDF on /robot_description ({len(msg.data)} chars).')
+        self._urdf_xml = msg.data
 
     def _on_target_position(self, msg: String) -> None:
         if self._busy:
             self.get_logger().warn(
-                'Spawn/drill cycle in progress; ignoring new /task/target_position.')
+                'Spawn/drill cycle in progress; ignoring new /robot/target_position.')
             return
         if self._matrix is None:
             self.get_logger().warn(
                 '/matrix not yet received; cannot transform drilling position.')
+            return
+        if not self._urdf_xml:
+            self.get_logger().warn(
+                '/robot_description not yet received; cannot spawn robot.')
             return
         try:
             payload = json.loads(msg.data)
@@ -174,11 +188,30 @@ class RobotSpawner(Node):
             self.get_logger().error(f'/spawn_entity failed: {reason}')
             self._busy = False
             return
+        self._broadcast_base_link_tf()
         self.get_logger().info(
             f'Spawned {ENTITY_NAME}; waiting {DRILLING_WAIT_SEC}s '
             '(placeholder for MoveIt drilling motion)...')
         self._post_spawn_timer = self.create_timer(
             DRILLING_WAIT_SEC, self._on_drilling_done)
+
+    def _broadcast_base_link_tf(self) -> None:
+        """Publish a static world -> base_link transform matching the spawned
+        pose so RViz/MoveIt see the robot where Gazebo placed it."""
+        if self._pending_pose is None:
+            return
+        t = TransformStamped()
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = 'world'
+        t.child_frame_id = 'base_link'
+        t.transform.translation.x = self._pending_pose.position.x
+        t.transform.translation.y = self._pending_pose.position.y
+        t.transform.translation.z = self._pending_pose.position.z
+        t.transform.rotation = self._pending_pose.orientation
+        self._tf_broadcaster.sendTransform(t)
+        self.get_logger().info(
+            f'Broadcast world->base_link at pos=({t.transform.translation.x:.3f}, '
+            f'{t.transform.translation.y:.3f}, {t.transform.translation.z:.3f}).')
 
     def _on_drilling_done(self) -> None:
         if self._post_spawn_timer is not None:

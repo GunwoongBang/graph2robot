@@ -10,9 +10,6 @@
     * instantiates the a200 chassis (Clearpath modern husky equivalent),
     * adds a thin "robot_arm_plate" sitting on default_mount,
     * mounts the UR5e (with prefix=ur_arm_) on top of the plate.
-
-  Generate URDF with:
-    xacro $(ros2 pkg prefix robot_gazebo)/share/robot_gazebo/urdf/husky_ur5e/husky_ur5e.urdf.xacro
 -->
 <robot name="husky_ur5e">
   <!-- Base link is the center of the robot's bottom plate -->
@@ -234,7 +231,7 @@
     <origin rpy="0 0 0" xyz="-0.256 -0.2775 0.03282"/>
     <axis rpy="0 0 0" xyz="0 1 0"/>
   </joint>
-  <gazebo>
+  <!-- <gazebo>
     <plugin filename="libignition-gazebo-wheel-slip-system.so" name="ignition::gazebo::systems::WheelSlip">
       <wheel link_name="front_left_wheel">
         <slip_compliance_lateral>1.0</slip_compliance_lateral>
@@ -261,7 +258,7 @@
         <wheel_radius>0.1651</wheel_radius>
       </wheel>
     </plugin>
-  </gazebo>
+  </gazebo> -->
   <!-- Front bumper mount -->
   <link name="front_bumper_mount"/>
   <joint name="front_bumper_mount_joint" type="fixed">
@@ -283,7 +280,7 @@
     <parent link="base_link"/>
     <origin xyz="0.0 0.0 0.224"/>
   </joint>
-  <ros2_control name="a200_hardware" type="system">
+  <!-- <ros2_control name="a200_hardware" type="system">
     <hardware>
       <plugin>clearpath_hardware_interfaces/A200Hardware</plugin>
       <param name="wheel_diameter">0.3302</param>
@@ -324,7 +321,7 @@
       <state_interface name="position"/>
       <state_interface name="velocity"/>
     </joint>
-  </ros2_control>
+  </ros2_control> -->
   <link name="robot_arm_plate">
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
