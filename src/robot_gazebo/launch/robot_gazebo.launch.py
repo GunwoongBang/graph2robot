@@ -5,6 +5,7 @@ from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from moveit_configs_utils import MoveItConfigsBuilder
 
 
@@ -46,18 +47,19 @@ def generate_launch_description() -> LaunchDescription:
         }.items(),
     )
 
-    # NOTE: we don't include static_virtual_joint_tfs.launch.py here. That
-    # broadcasts world->base_link at (0,0,0). robot_spawner instead publishes
-    # the dynamic transform that matches each spawn pose.
+    robot_description = {
+        'robot_description': ParameterValue(
+            moveit_config.robot_description['robot_description'],
+            value_type=None,
+        ),
+    }
 
-    # Publishes the xacro-processed URDF on /robot_description so every
-    # consumer (gazebo_ros2_control, MoveIt, robot_spawner) uses the same.
     robot_state_publisher = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
         name='robot_state_publisher',
         output='screen',
-        parameters=[moveit_config.robot_description],
+        parameters=[robot_description, {'use_sim_time': True}],
     )
 
     # MoveIt's planner / scene server.
@@ -66,24 +68,7 @@ def generate_launch_description() -> LaunchDescription:
         executable='move_group',
         name='move_group',
         output='screen',
-        parameters=[moveit_config.to_dict()],
-    )
-
-    # Standalone controller_manager process. Hosts mock_components hardware
-    # interface (declared in husky_ur5e.ros2_control.xacro) and runs the
-    # controllers below. Gazebo's arm joints do not physically respond to
-    # commands here; arm motion is visible in RViz via /joint_states.
-    ros2_control_node = Node(
-        package='controller_manager',
-        executable='ros2_control_node',
-        parameters=[
-            moveit_config.robot_description,
-            os.path.join(
-                get_package_share_directory('husky_ur5e_moveit_config'),
-                'config', 'ros2_controllers.yaml',
-            ),
-        ],
-        output='screen',
+        parameters=[moveit_config.to_dict(), {'use_sim_time': True}],
     )
 
     joint_state_broadcaster_spawner = Node(
@@ -124,7 +109,6 @@ def generate_launch_description() -> LaunchDescription:
         gazebo,
         robot_state_publisher,
         move_group,
-        ros2_control_node,
         world_spawner,
         robot_spawner,
         joint_state_broadcaster_spawner,

@@ -17,9 +17,6 @@ setup(
             'models/worlds/ifc_world.sdf',
             'models/worlds/empty_world.sdf',
         ]),
-        # ('share/' + package_name + '/urdf/husky_ur5e', [
-        #     'urdf/husky_ur5e/husky_ur5e.urdf.xacro',
-        # ]),
         ('share/' + package_name + '/models/worlds/meshes', [
             'models/worlds/meshes/IfcSlab_20rBv4HojAY8M3avWLHAN_.obj',
             'models/worlds/meshes/IfcWall_1iDZV_Brn0Z9GW0EFhIoO4.obj',
@@ -60,6 +57,9 @@ setup(
             'models/robots/ur5e_meshes/visual/wrist1.dae',
             'models/robots/ur5e_meshes/visual/wrist2.dae',
             'models/robots/ur5e_meshes/visual/wrist3.dae',
+        ]),
+        ('share/' + package_name + '/models/robots/drill_meshes', [
+            'models/robots/drill_meshes/drill_cone.stl',
         ]),
     ],
     install_requires=['setuptools'],
