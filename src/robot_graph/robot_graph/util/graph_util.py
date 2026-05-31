@@ -23,6 +23,16 @@ ORDER BY w.name
 LIMIT $limit
 """
 
+_QUERY_LAYERS = """
+MATCH (l:Layer)
+RETURN l.id AS id
+       l.name AS name
+       l.layerIndex AS layerIndex
+       l.thickness AS thickness
+ORDER BY l.name
+LIMIT $limit
+"""
+
 _QUERY_MEP_ELEMENTS = """
 MATCH (me:MEPElement)
 OPTIONAL MATCH (s:Space)-[:HOSTS]->(me)
@@ -84,6 +94,20 @@ def query_walls(driver: Driver, limit: int) -> list[dict[str, Any]]:
                 'space': record['space'],
             })
     return walls
+
+
+def query_layers(driver: Driver, limit: int) -> list[dict[str, Any]]:
+    layers: list[dict[str, Any]] = []
+    with driver.session() as session:
+        result = session.run(_QUERY_LAYERS, limit=limit)
+        for record in result:
+            layers.append({
+                'id': record['id'],
+                'name': record['name'],
+                'layerIndex': record['layerIndex'],
+                'thickness': record['thickness'],
+            })
+    return layers
 
 
 def query_mep_elements(driver: Driver, limit: int) -> list[dict[str, Any]]:

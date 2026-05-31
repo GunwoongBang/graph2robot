@@ -28,6 +28,7 @@ Schritt fuer Schritt
 2. graph_client asks for wall information to graph_server (DONE)
 3. from the graph_server, we are receiving a wall information including axis2 which is a denominator of in which direction the wall is lying (DONE)
 4. task_generator now calculates the drilling position with the attributes "center" from /task/selected_task, and "axis2" from /walls (info collected, calculation ready)
+    - But when it comes to the heading, mep_elements' face is not reliable since, they are not consistent. So try using wall's axis and directionSense to determine the exact position
 
 ### Task representation
 1. first, from the robot urdf file, it calculates the furthrest reachable area (working_area) and creates a virtual sphere -> are we going to create a task node in neo4j and attach/detach it throughout the pipeline?

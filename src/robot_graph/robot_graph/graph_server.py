@@ -10,6 +10,7 @@ from std_srvs.srv import Trigger
 from .util import (
     query_spaces,
     query_walls,
+    query_layers,
     query_mep_elements,
 )
 
@@ -53,6 +54,9 @@ class GraphServer(Node):
             Trigger, '/graph/list_walls', self._handle_list_walls)
         self.get_logger().info(
             'Service ready: /graph/list_walls (std_srvs/Trigger)')
+        # Layers
+        self._layer_srv = self.create_service(
+            Trigger, '/graph/list_layers', self._handle_list_layers)
         # MEP Elements
         self._mep_element_srv = self.create_service(
             Trigger, '/graph/list_mep_elements', self._handle_list_mep_elements)
@@ -102,6 +106,28 @@ class GraphServer(Node):
         response.message = json.dumps(walls)
         self.get_logger().info(
             f'Returned {len(walls)} walls to client.')
+        return response
+
+    def _handle_list_layers(
+            self, _request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:
+        if self.driver is None:
+            response.success = False
+            response.message = 'Neo4j driver is not connected.'
+            return response
+
+        try:
+            layers = query_layers(
+                self.driver, self._query_limit)  # Placeholder
+        except Exception as exc:
+            self.get_logger().error(f'Failed to query layers: {exc}')
+            response.success = False
+            response.message = f'Query failed: {exc}'
+            return response
+
+        response.success = True
+        response.message = json.dumps(layers)
+        self.get_logger().info(
+            f'Returned {len(layers)} layers to client.')
         return response
 
     def _handle_list_mep_elements(

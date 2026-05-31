@@ -25,6 +25,8 @@ class TaskGenerator(Node):
         # Publishers
         self._target_position_pub = self.create_publisher(
             String, '/robot/target_position', latched_qos)
+        self._target_point_pub = self.create_publisher(
+            String, '/task/target_point', latched_qos)
         # Subscribers
         self._selected_element_sub = self.create_subscription(
             String, '/task/selected_element', self._on_selected_element, latched_qos)
@@ -49,6 +51,7 @@ class TaskGenerator(Node):
             f"Selected element: name='{self._selected_element.get('name', '')}' "
             f"id={self._selected_element.get('id', '')}")
         self.publish_target_position()
+        self.publish_target_point()
 
     def _on_walls(self, msg: String) -> None:
         try:
@@ -150,6 +153,76 @@ class TaskGenerator(Node):
         self.get_logger().info(
             f'Published IFC-frame target position on /task/target_position: '
             f'pos=({ifc_xy[0]:.3f}, {ifc_xy[1]:.3f}, 0.000) heading=({hx:.3f}, {hy:.3f}).')
+
+    def publish_target_point(self) -> None:
+        """Drill entry point as the projection of MEP center onto wall surface.
+
+        Tangential alignment of the drill tip matches the MEP element's own
+        geometric center exactly; only the wall-normal coordinate is pinned to
+        the wall outer surface. This removes any drift that would come from
+        relying on BIM-precomputed penetrationCenter for tangential coords.
+        """
+        if self._selected_element is None:
+            return
+        mep_center = self._selected_element.get('center')
+        face = self._selected_element.get('face')
+        wall_obj = self._selected_element.get('wall') or {}
+        penetration_center = wall_obj.get('center')
+        length = wall_obj.get('length')
+
+        if mep_center is None or len(mep_center) != 3:
+            self.get_logger().warn(
+                'target_point: missing/invalid mep.center; skipping.')
+            return
+        if face is None or len(face) != 3:
+            self.get_logger().warn(
+                'target_point: missing/invalid face; skipping.')
+            return
+        if penetration_center is None or len(penetration_center) != 3:
+            self.get_logger().warn(
+                'target_point: missing/invalid wall.center; skipping.')
+            return
+        if length is None:
+            self.get_logger().warn(
+                'target_point: missing wall.length; skipping.')
+            return
+
+        mep_m = [float(mep_center[i]) / 1000.0 for i in range(3)]
+        face_v = [float(face[i]) for i in range(3)]
+        p_m = [float(penetration_center[i]) / 1000.0 for i in range(3)]
+        half_t_m = (float(length) / 1000.0) / 2.0
+
+        # P0 = a point on the wall outer surface plane.
+        p0 = [p_m[i] + face_v[i] * half_t_m for i in range(3)]
+        # Signed distance from mep_center to the plane, along face.
+        d = sum((mep_m[i] - p0[i]) * face_v[i] for i in range(3))
+        # Project mep_center onto the plane.
+        entry = tuple(mep_m[i] - d * face_v[i] for i in range(3))
+        depth_m = float(length) / 1000.0
+
+        payload = {
+            'target_point': {
+                'x': entry[0],
+                'y': entry[1],
+                'z': entry[2],
+                'nx': -float(face[0]),
+                'ny': -float(face[1]),
+                'nz': -float(face[2]),
+                'depth': depth_m,
+                'thickness': depth_m,
+                'layers': None,
+                'wall_id': wall_obj.get('id'),
+                'mep_id': self._selected_element.get('id'),
+            },
+        }
+        msg = String()
+        msg.data = json.dumps(payload)
+        self._target_point_pub.publish(msg)
+        self.get_logger().info(
+            f'Published IFC-frame target point on /task/target_point: '
+            f'entry=({entry[0]:.3f}, {entry[1]:.3f}, {entry[2]:.3f}) '
+            f'normal=({-face[0]:.3f}, {-face[1]:.3f}, {-face[2]:.3f}) '
+            f'depth={depth_m:.3f}m.')
 
 
 def main() -> None:
