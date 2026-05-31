@@ -75,4 +75,8 @@
     <disable_collisions link1="ur_arm_wrist_1_link" link2="ur_arm_wrist_2_link" reason="Adjacent"/>
     <disable_collisions link1="ur_arm_wrist_1_link" link2="ur_arm_wrist_3_link" reason="Never"/>
     <disable_collisions link1="ur_arm_wrist_2_link" link2="ur_arm_wrist_3_link" reason="Adjacent"/>
+    <disable_collisions link1="drill_link" link2="ur_arm_wrist_3_link" reason="Adjacent"/>
+    <disable_collisions link1="drill_link" link2="ur_arm_wrist_2_link" reason="Never"/>
+    <disable_collisions link1="drill_link" link2="ur_arm_wrist_1_link" reason="Never"/>
+    <disable_collisions link1="drill_link" link2="ur_arm_forearm_link" reason="Never"/>
 </robot>

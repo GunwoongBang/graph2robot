@@ -58,6 +58,7 @@ def generate_launch_description() -> LaunchDescription:
             moveit_config.robot_description_kinematics,
             moveit_config.joint_limits,
             moveit_config.planning_pipelines,
+            {'use_sim_time': True},
         ],
     )
 

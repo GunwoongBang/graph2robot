@@ -5,11 +5,7 @@
 
         <ros2_control name="${name}" type="system">
             <hardware>
-                <!-- Mock hardware: echoes commands as state. controller_manager
-                     runs as a standalone ros2_control_node (see robot_gazebo
-                     launch). Arm motion shows in RViz only; Gazebo is the
-                     static scene + spawned base. -->
-                <plugin>mock_components/GenericSystem</plugin>
+                <plugin>gazebo_ros2_control/GazeboSystem</plugin>
             </hardware>
             <joint name="ur_arm_shoulder_pan_joint">
                 <command_interface name="position"/>
@@ -51,6 +47,27 @@
                 <state_interface name="position">
                   <param name="initial_value">${initial_positions['ur_arm_wrist_3_joint']}</param>
                 </state_interface>
+                <state_interface name="velocity"/>
+            </joint>
+
+            <joint name="front_left_wheel_joint">
+                <command_interface name="effort"/>
+                <state_interface name="position"/>
+                <state_interface name="velocity"/>
+            </joint>
+            <joint name="front_right_wheel_joint">
+                <command_interface name="effort"/>
+                <state_interface name="position"/>
+                <state_interface name="velocity"/>
+            </joint>
+            <joint name="rear_left_wheel_joint">
+                <command_interface name="effort"/>
+                <state_interface name="position"/>
+                <state_interface name="velocity"/>
+            </joint>
+            <joint name="rear_right_wheel_joint">
+                <command_interface name="effort"/>
+                <state_interface name="position"/>
                 <state_interface name="velocity"/>
             </joint>
 
