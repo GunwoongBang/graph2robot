@@ -60,12 +60,12 @@ class TaskRepresenter(Node):
 
         self._cloud: np.ndarray | None = None
         self._frame_id: str = 'world'
-        self._target_position: dict | None = None
         self._matrix: np.ndarray | None = None
+        self._walls: list[dict] | None = None
+        self._selected_element: str | None = None
         self._filtered_elements: list[dict] | None = None
         self._target_wall: str | None = None
-        self._selected_id: str | None = None
-        self._walls: list[dict] | None = None
+        self._target_position: dict | None = None
 
     def _load_wall_index_map(self) -> dict[str, np.ndarray]:
         if not self._csv_path.exists():
@@ -134,13 +134,13 @@ class TaskRepresenter(Node):
                 f'Invalid /task/selected_element JSON: {exc}')
             return
         element = payload.get('selected_element') or {}
-        self._selected_id = element.get('id')
-        if self._selected_id is None:
+        self._selected_element = element.get('id')
+        if self._selected_element is None:
             self.get_logger().warn(
                 '/task/selected_element had no "selected_element.id" field.')
             return
         self.get_logger().info(
-            f'Received selected element on /task/selected_element: id={self._selected_id}')
+            f'Received selected element on /task/selected_element: id={self._selected_element}')
         self._try_process()
 
     def _on_filtered_elements(self, msg: String) -> None:
@@ -198,7 +198,7 @@ class TaskRepresenter(Node):
     def _try_process(self) -> None:
         if (self._cloud is None or self._matrix is None
                 or self._target_position is None or self._target_wall is None
-                or self._selected_id is None or self._walls is None):
+                or self._selected_element is None or self._walls is None):
             return
         if len(self._cloud) == 0:
             self.get_logger().warn('Empty point cloud; skipping.')
@@ -259,7 +259,7 @@ class TaskRepresenter(Node):
         # 1) On-wall danger zone (red)
         if self._filtered_elements:
             for e in self._filtered_elements:
-                if e.get('id') == self._selected_id:
+                if e.get('id') == self._selected_element:
                     continue
                 wall = e.get('wall') or {}
                 if wall.get('id') != self._target_wall:
@@ -305,7 +305,7 @@ class TaskRepresenter(Node):
         sphere_max = sphere_ifc_mm + sphere_r_mm
         if self._filtered_elements:
             for e in self._filtered_elements:
-                if e.get('id') == self._selected_id:
+                if e.get('id') == self._selected_element:
                     continue
                 aabb = self._element_aabb_mm(e)
                 if aabb is None:
@@ -336,7 +336,7 @@ class TaskRepresenter(Node):
         # 3) On-wall task zone (blue)
         if self._filtered_elements:
             for e in self._filtered_elements:
-                if e.get('id') != self._selected_id:
+                if e.get('id') != self._selected_element:
                     continue
                 wall = e.get('wall') or {}
                 if wall.get('id') != self._target_wall:

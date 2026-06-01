@@ -57,7 +57,6 @@ WITH me, space,
 WITH me, space, head([x IN w_raw WHERE x IS NOT NULL]) AS wall
 RETURN me.id AS id,
        me.name AS name,
-       me.face AS face,
        me.center AS center,
        me.bbox_max AS bbox_max,
        me.bbox_min AS bbox_min,
@@ -121,7 +120,6 @@ def query_mep_elements(driver: Driver, limit: int) -> list[dict[str, Any]]:
             elements.append({
                 'id': record['id'],
                 'name': record['name'],
-                'face': record['face'],
                 'center': record['center'],
                 'bbox_max': record['bbox_max'],
                 'bbox_min': record['bbox_min'],
