@@ -18,7 +18,7 @@ from sensor_msgs_py import point_cloud2
 from std_msgs.msg import String
 
 # Both constants are arbitrary
-# With UR5e's URDF with LLM(?), it can be more generalized and
+# With UR5e's URDF and LLM(?), it can be more generalized
 SPHERE_RADIUS = 0.811  # meters; UR5e reach by default.
 CENTER_Z_OFFSET = 0.529  # meters; height where the shoulder joint sits
 CSV_FILENAME = 'cloudGlobal_cleaned_excluded.csv'
@@ -280,14 +280,7 @@ class TaskRepresenter(Node):
                 center_mm = np.array(c_mm, dtype=np.float32)
                 diff = wall_pts_ifc_mm - center_mm
                 if is_cyl:
-                    face = e.get('face')
-                    if face is None or len(face) != 3:
-                        continue
-                    axis = np.array(face, dtype=np.float32)
-                    n = float(np.linalg.norm(axis))
-                    if n < 1e-6:
-                        continue
-                    axis /= n
+                    axis = np.array(axis2, dtype=np.float32)
                     along = diff @ axis
                     perp_sq = np.sum(diff * diff, axis=1) - along * along
                     inside = (np.abs(along) <= p_length / 2.0) & (
@@ -357,14 +350,8 @@ class TaskRepresenter(Node):
                 center_mm = np.array(c_mm, dtype=np.float32)
                 diff = wall_pts_ifc_mm - center_mm
                 if is_cyl:
-                    face = e.get('face')
-                    if face is None or len(face) != 3:
-                        break
-                    axis = np.array(face, dtype=np.float32)
-                    n = float(np.linalg.norm(axis))
-                    if n < 1e-6:
-                        break
-                    axis /= n
+                    # Cylinder axis = wall's axis2 (perpendicular to wall).
+                    axis = np.array(axis2, dtype=np.float32)
                     along = diff @ axis
                     perp_sq = np.sum(diff * diff, axis=1) - along * along
                     inside = (np.abs(along) <= p_length / 2.0) & (
@@ -429,30 +416,7 @@ class TaskRepresenter(Node):
 
     @staticmethod
     def _element_aabb_mm(e: dict) -> tuple[np.ndarray, np.ndarray] | None:
-        """Return (center_mm, half_extents_mm) AABB of the element in IFC
-        frame, derived from its shape. Cylindrical uses face+radius+length,
-        rectangular uses sizeX/Y/Z, otherwise falls back to bbox_min/max."""
-        shape_type = e.get('shapeType')
         center = e.get('center')
-        if shape_type == 'cylindrical' or (
-                e.get('radius') is not None and e.get('length') is not None):
-            if center is None or len(center) != 3:
-                return None
-            face = e.get('face')
-            r = e.get('radius')
-            L = e.get('length')
-            if face is None or len(face) != 3 or r is None or L is None:
-                return None
-            a = np.array(face, dtype=np.float64)
-            n = float(np.linalg.norm(a))
-            if n < 1e-6:
-                return None
-            a /= n
-            half = np.array([
-                L / 2.0 * abs(a[k]) + r * np.sqrt(max(0.0, 1.0 - a[k] * a[k]))
-                for k in range(3)
-            ], dtype=np.float32)
-            return np.array(center, dtype=np.float32), half
         if (e.get('sizeX') is not None and e.get('sizeY') is not None
                 and e.get('sizeZ') is not None):
             if center is None or len(center) != 3:
