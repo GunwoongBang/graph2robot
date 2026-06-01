@@ -36,6 +36,8 @@ class TaskManager(Node):
             String, '/ifc/spaces', latched_qos)
         self._wall_pub = self.create_publisher(
             String, '/ifc/walls', latched_qos)
+        self._layer_pub = self.create_publisher(
+            String, '/ifc/layers', latched_qos)
         self._mep_element_pub = self.create_publisher(
             String, '/ifc/mep_elements', latched_qos)
         self._matrix_pub = self.create_publisher(
@@ -45,11 +47,14 @@ class TaskManager(Node):
             String, '/spaces', self._on_spaces, latched_qos)
         self._wall_sub = self.create_subscription(
             String, '/walls', self._on_walls, latched_qos)
+        self._layer_sub = self.create_subscription(
+            String, '/layers', self._on_layers, latched_qos)
         self._mep_element_sub = self.create_subscription(
             String, '/mep_elements', self._on_mep_elements, latched_qos)
 
         self._mep_elements: list[dict] | None = None
         self._walls: list[dict] | None = None
+        self._layers: list[dict] | None = None
         self._transform_matrix = self._load_transform_matrix()
 
     def _on_spaces(self, msg: String) -> None:
@@ -71,6 +76,16 @@ class TaskManager(Node):
         self.get_logger().info(
             f'Received {len(self._walls)} walls on /walls.')
         self.publish_walls()
+
+    def _on_layers(self, msg: String) -> None:
+        try:
+            self._layers = json.loads(msg.data)
+        except json.JSONDecodeError as exc:
+            self.get_logger().error(f'Invalid /layers JSON: {exc}')
+            return
+        self.get_logger().info(
+            f'Received {len(self._layers)} layers on /layers.')
+        self.publish_layers()
 
     def _on_mep_elements(self, msg: String) -> None:
         try:
@@ -124,6 +139,19 @@ class TaskManager(Node):
         self._wall_pub.publish(msg)
         self.get_logger().info(
             f'Published {len(self._walls)} walls on /ifc/walls.')
+
+    def publish_layers(self) -> None:
+        if not self._layers:
+            return
+        payload = {
+            'count': len(self._layers),
+            'layers': self._layers,
+        }
+        msg = String()
+        msg.data = json.dumps(payload)
+        self._layer_pub.publish(msg)
+        self.get_logger().info(
+            f'Published {len(self._layers)} layers on /ifc/layers.')
 
     def publish_mep_elements(self) -> None:
         if not self._mep_elements:

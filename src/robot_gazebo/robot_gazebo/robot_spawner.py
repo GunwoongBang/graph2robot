@@ -37,33 +37,35 @@ class RobotSpawner(Node):
         self._matrix: np.ndarray | None = None
         self._last_pose: Pose | None = None
 
+        # === Service servers and clients ===
         # === Clients ===
         self._spawn_cli = self.create_client(SpawnEntity, '/spawn_entity')
         self._set_state_cli = self.create_client(
             SetEntityState, '/gazebo/set_entity_state')
 
-        # === Subscriptions ===
+        # === Topic publishers and subscribers ===
         latched_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
         )
-        # /robot/target_position is a fresh event; ignore any latched payload
-        # from a prior session.
+        #
         volatile_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.VOLATILE,
             history=HistoryPolicy.KEEP_LAST,
         )
-
+        # Subscribers
+        self._matrix_sub = self.create_subscription(
+            String, '/matrix', self._on_matrix, latched_qos)
         self._robot_description_sub = self.create_subscription(
             String, '/robot_description', self._on_robot_description, latched_qos)
         self._target_position_sub = self.create_subscription(
             String, '/robot/target_position', self._on_target_position, volatile_qos)
-        self._matrix_sub = self.create_subscription(
-            String, '/matrix', self._on_matrix, latched_qos)
+        self._target_position_sub = self.create_subscription(
+            String, '/robot/target_position', self._on_target_position, volatile_qos)
 
         self._tf_broadcaster = StaticTransformBroadcaster(self)
 

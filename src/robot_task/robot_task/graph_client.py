@@ -23,6 +23,8 @@ class GraphClient(Node):
             Trigger, '/graph/list_spaces')
         self._wall_cli = self.create_client(
             Trigger, '/graph/list_walls')
+        self._layer_cli = self.create_client(
+            Trigger, '/graph/list_layers')
         self._mep_element_cli = self.create_client(
             Trigger, '/graph/list_mep_elements')
 
@@ -38,12 +40,12 @@ class GraphClient(Node):
             String, '/spaces', latched_qos)
         self._wall_pub = self.create_publisher(
             String, '/walls', latched_qos)
+        self._layer_pub = self.create_publisher(
+            String, '/layers', latched_qos)
         self._mep_element_pub = self.create_publisher(
             String, '/mep_elements', latched_qos)
 
     def request_spaces(self, wait_timeout_sec: float = 10.0) -> None:
-        self.get_logger().info(
-            'Waiting for /graph/list_spaces service...')
         if not self._space_cli.wait_for_service(timeout_sec=wait_timeout_sec):
             self.get_logger().error(
                 f'Service /graph/list_spaces not available after {wait_timeout_sec}s; abort.')
@@ -52,8 +54,6 @@ class GraphClient(Node):
         future.add_done_callback(self._handle_spaces_response)
 
     def request_walls(self, wait_timeout_sec: float = 10.0) -> None:
-        self.get_logger().info(
-            'Waiting for /graph/list_walls service...')
         if not self._wall_cli.wait_for_service(timeout_sec=wait_timeout_sec):
             self.get_logger().error(
                 f'Service /graph/list_walls not available after {wait_timeout_sec}s; abort.')
@@ -61,9 +61,15 @@ class GraphClient(Node):
         future = self._wall_cli.call_async(Trigger.Request())
         future.add_done_callback(self._handle_walls_response)
 
+    def request_layers(self, wait_timeout_sec: float = 10.0) -> None:
+        if not self._layer_cli.wait_for_service(timeout_sec=wait_timeout_sec):
+            self.get_logger().error(
+                f'Service /graph/list_layers not available after {wait_timeout_sec}s; abort.')
+            return
+        future = self._layer_cli.call_async(Trigger.Request())
+        future.add_done_callback(self._handle_layers_response)
+
     def request_mep_elements(self, wait_timeout_sec: float = 10.0) -> None:
-        self.get_logger().info(
-            'Waiting for /graph/list_mep_elements service...')
         if not self._mep_element_cli.wait_for_service(timeout_sec=wait_timeout_sec):
             self.get_logger().error(
                 f'Service /graph/list_mep_elements not available after {wait_timeout_sec}s; abort.')
@@ -108,6 +114,16 @@ class GraphClient(Node):
         self.get_logger().info(
             f'Published {len(walls)} walls on /walls.')
 
+    def _handle_layers_response(self, future: Future) -> None:
+        layers = self._parse_response(future)
+        if layers is None:
+            return
+        msg = String()
+        msg.data = json.dumps(layers)
+        self._layer_pub.publish(msg)
+        self.get_logger().info(
+            f'Published {len(layers)} layers on /layers.')
+
     def _handle_mep_elements_response(self, future: Future) -> None:
         elements = self._parse_response(future)
         if elements is None:
@@ -125,6 +141,7 @@ def main() -> None:
     try:
         node.request_spaces()
         node.request_walls()
+        node.request_layers()
         node.request_mep_elements()
         rclpy.spin(node)
     except KeyboardInterrupt:
