@@ -46,25 +46,14 @@ class GraphServer(Node):
 
         # === Service servers and clients ===
         # Servers
-        # Spaces
         self._space_srv = self.create_service(
             Trigger, '/graph/list_spaces', self._handle_list_spaces)
-        # Walls
         self._wall_srv = self.create_service(
             Trigger, '/graph/list_walls', self._handle_list_walls)
-        self.get_logger().info(
-            'Service ready: /graph/list_walls (std_srvs/Trigger)')
-        # Layers
         self._layer_srv = self.create_service(
             Trigger, '/graph/list_layers', self._handle_list_layers)
-        # MEP Elements
         self._mep_element_srv = self.create_service(
             Trigger, '/graph/list_mep_elements', self._handle_list_mep_elements)
-        self.get_logger().info(
-            'Service ready: /graph/list_mep_elements (std_srvs/Trigger)')
-
-        # TODO: Add more services for updating the graph
-        # self._update_graph_srv = self.create_service(...)
 
     def _handle_list_spaces(
             self, _request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:

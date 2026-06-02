@@ -11,6 +11,7 @@ log/
 
 # Python cache
 __pycache__/
+.pytest_cache/
 
 # Template
 template/

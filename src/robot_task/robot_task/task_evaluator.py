@@ -1,4 +1,3 @@
-# Task evaluator queries Neo4j and publishes /task/danger_elements or similar. The robot_rviz visualizer then consumes that too. Clean split between evaluation (robot_task) and visualization (robot_rviz).
 import json
 import rclpy
 
@@ -9,7 +8,6 @@ from rclpy.qos import (
     DurabilityPolicy,
     HistoryPolicy,
 )
-from std_srvs.srv import Trigger
 from std_msgs.msg import String
 
 

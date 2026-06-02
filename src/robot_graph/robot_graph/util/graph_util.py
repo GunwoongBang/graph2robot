@@ -10,7 +10,7 @@ LIMIT $limit
 
 _QUERY_WALLS = """
 MATCH (w:Wall)
-OPTIONAL MATCH (s:Space)-[b:BOUNDED_BY]->(w)
+OPTIONAL MATCH (s:Space)-[b:BOUNDED_BY]->(w:Wall)
 WITH w,
      collect(CASE WHEN s IS NULL THEN NULL ELSE {
          id: s.id, side: b.side
@@ -18,30 +18,32 @@ WITH w,
 WITH w, [x IN raw WHERE x IS NOT NULL] AS space
 RETURN w.id AS id,
        w.axis2 AS axis2,
+       w.directionSense AS directionSense,
        space
 ORDER BY w.name
 LIMIT $limit
 """
 
 _QUERY_LAYERS = """
-MATCH (l:Layer)
-RETURN l.id AS id
-       l.name AS name
-       l.layerIndex AS layerIndex
-       l.thickness AS thickness
+MATCH (w:Wall)-[:HAS_LAYER]->(l:Layer)
+RETURN l.id AS id,
+       l.name AS name,
+       l.layerIndex AS layerIndex,
+       l.thickness AS thickness,
+       w.id AS wall_id
 ORDER BY l.name
 LIMIT $limit
 """
 
 _QUERY_MEP_ELEMENTS = """
 MATCH (me:MEPElement)
-OPTIONAL MATCH (s:Space)-[:HOSTS]->(me)
+OPTIONAL MATCH (s:Space)-[:HOSTS]->(me:MEPElement)
 WITH me,
      collect(CASE WHEN s IS NULL THEN NULL ELSE {
          id: s.id, name: s.name
      } END) AS s_raw
 WITH me, head([x IN s_raw WHERE x IS NOT NULL]) AS space
-OPTIONAL MATCH (w:Wall)-[p:PENETRATED_BY]->(me)
+OPTIONAL MATCH (w:Wall)-[p:PENETRATED_BY]->(me:MEPElement)
 WITH me, space,
      collect(CASE WHEN w IS NULL THEN NULL ELSE {
          id: w.id,
@@ -55,7 +57,6 @@ WITH me, space,
 WITH me, space, head([x IN w_raw WHERE x IS NOT NULL]) AS wall
 RETURN me.id AS id,
        me.name AS name,
-       me.face AS face,
        me.center AS center,
        me.bbox_max AS bbox_max,
        me.bbox_min AS bbox_min,
@@ -91,6 +92,7 @@ def query_walls(driver: Driver, limit: int) -> list[dict[str, Any]]:
             walls.append({
                 'id': record['id'],
                 'axis2': record['axis2'],
+                'directionSense': record['directionSense'],
                 'space': record['space'],
             })
     return walls
@@ -118,7 +120,6 @@ def query_mep_elements(driver: Driver, limit: int) -> list[dict[str, Any]]:
             elements.append({
                 'id': record['id'],
                 'name': record['name'],
-                'face': record['face'],
                 'center': record['center'],
                 'bbox_max': record['bbox_max'],
                 'bbox_min': record['bbox_min'],

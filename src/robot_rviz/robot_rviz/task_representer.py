@@ -18,10 +18,15 @@ from sensor_msgs_py import point_cloud2
 from std_msgs.msg import String
 
 # Both constants are arbitrary
-# With UR5e's URDF with LLM(?), it can be more generalized and
+# With UR5e's URDF and LLM(?), it can be more generalized
 SPHERE_RADIUS = 0.811  # meters; UR5e reach by default.
 CENTER_Z_OFFSET = 0.529  # meters; height where the shoulder joint sits
 CSV_FILENAME = 'cloudGlobal_cleaned_excluded.csv'
+
+CATEGORY_RED = 1     # on-wall penetration of another MEP (high danger)
+CATEGORY_ORANGE = 2  # projection shadow of a nearby MEP (medium danger)
+CATEGORY_BLUE = 3    # selected MEP's own penetration (drill target zone)
+CATEGORY_GREEN = 4   # within working sphere, no danger
 
 
 class TaskRepresenter(Node):
@@ -42,6 +47,8 @@ class TaskRepresenter(Node):
         # Publishers
         self._representation_pub = self.create_publisher(
             PointCloud2, '/task/representation', latched_qos)
+        self._zones_pub = self.create_publisher(
+            PointCloud2, '/task/zones', latched_qos)
         # Subscribers
         self._cloud_sub = self.create_subscription(
             PointCloud2, '/cloud', self._on_cloud, latched_qos)
@@ -60,12 +67,12 @@ class TaskRepresenter(Node):
 
         self._cloud: np.ndarray | None = None
         self._frame_id: str = 'world'
-        self._target_position: dict | None = None
         self._matrix: np.ndarray | None = None
+        self._walls: list[dict] | None = None
+        self._selected_element: str | None = None
         self._filtered_elements: list[dict] | None = None
         self._target_wall: str | None = None
-        self._selected_id: str | None = None
-        self._walls: list[dict] | None = None
+        self._target_position: dict | None = None
 
     def _load_wall_index_map(self) -> dict[str, np.ndarray]:
         if not self._csv_path.exists():
@@ -134,13 +141,13 @@ class TaskRepresenter(Node):
                 f'Invalid /task/selected_element JSON: {exc}')
             return
         element = payload.get('selected_element') or {}
-        self._selected_id = element.get('id')
-        if self._selected_id is None:
+        self._selected_element = element.get('id')
+        if self._selected_element is None:
             self.get_logger().warn(
                 '/task/selected_element had no "selected_element.id" field.')
             return
         self.get_logger().info(
-            f'Received selected element on /task/selected_element: id={self._selected_id}')
+            f'Received selected element on /task/selected_element: id={self._selected_element}')
         self._try_process()
 
     def _on_filtered_elements(self, msg: String) -> None:
@@ -198,12 +205,25 @@ class TaskRepresenter(Node):
     def _try_process(self) -> None:
         if (self._cloud is None or self._matrix is None
                 or self._target_position is None or self._target_wall is None
-                or self._selected_id is None or self._walls is None):
+                or self._selected_element is None or self._walls is None):
             return
         if len(self._cloud) == 0:
             self.get_logger().warn('Empty point cloud; skipping.')
             return
+        result = self._compute_zones()
+        if result is None:
+            return
+        kept_pts, categories, totals = result
+        self._publish_representation(kept_pts, categories)
+        self._publish_zones(kept_pts, categories)
+        red_n, orange_n, blue_n, green_n = totals
+        self.get_logger().info(
+            f'Published {len(kept_pts)} task points on /task/representation '
+            f'+ /task/zones (wall={self._target_wall}, '
+            f'green={green_n}, orange={orange_n}, '
+            f'blue={blue_n}, red={red_n}).')
 
+    def _compute_zones(self):
         # IFC -> cloud frame for the sphere center.
         ifc_pos = np.array([
             float(self._target_position.get('x', 0.0)),
@@ -218,7 +238,7 @@ class TaskRepresenter(Node):
         if wall_idx is None or len(wall_idx) == 0:
             self.get_logger().warn(
                 f'No points on wall {self._target_wall} in CSV map.')
-            return
+            return None
 
         wall_pts = self._cloud[wall_idx]
         dists_sq = np.sum((wall_pts - center) ** 2, axis=1)
@@ -229,12 +249,12 @@ class TaskRepresenter(Node):
         if target_wall_dict is None:
             self.get_logger().warn(
                 f'Wall id={self._target_wall} not found in /ifc/walls.')
-            return
+            return None
         axis2 = target_wall_dict.get('axis2')
         if axis2 is None or len(axis2) != 3:
             self.get_logger().warn(
                 f'Wall id={self._target_wall} has no valid axis2.')
-            return
+            return None
         # Surface axes = the two indices perpendicular to axis2.
         normal_axis = int(np.argmax(np.abs(axis2)))
         surface_axes = [i for i in range(3) if i != normal_axis]
@@ -259,7 +279,7 @@ class TaskRepresenter(Node):
         # 1) On-wall danger zone (red)
         if self._filtered_elements:
             for e in self._filtered_elements:
-                if e.get('id') == self._selected_id:
+                if e.get('id') == self._selected_element:
                     continue
                 wall = e.get('wall') or {}
                 if wall.get('id') != self._target_wall:
@@ -280,14 +300,7 @@ class TaskRepresenter(Node):
                 center_mm = np.array(c_mm, dtype=np.float32)
                 diff = wall_pts_ifc_mm - center_mm
                 if is_cyl:
-                    face = e.get('face')
-                    if face is None or len(face) != 3:
-                        continue
-                    axis = np.array(face, dtype=np.float32)
-                    n = float(np.linalg.norm(axis))
-                    if n < 1e-6:
-                        continue
-                    axis /= n
+                    axis = np.array(axis2, dtype=np.float32)
                     along = diff @ axis
                     perp_sq = np.sum(diff * diff, axis=1) - along * along
                     inside = (np.abs(along) <= p_length / 2.0) & (
@@ -305,7 +318,7 @@ class TaskRepresenter(Node):
         sphere_max = sphere_ifc_mm + sphere_r_mm
         if self._filtered_elements:
             for e in self._filtered_elements:
-                if e.get('id') == self._selected_id:
+                if e.get('id') == self._selected_element:
                     continue
                 aabb = self._element_aabb_mm(e)
                 if aabb is None:
@@ -336,7 +349,7 @@ class TaskRepresenter(Node):
         # 3) On-wall task zone (blue)
         if self._filtered_elements:
             for e in self._filtered_elements:
-                if e.get('id') != self._selected_id:
+                if e.get('id') != self._selected_element:
                     continue
                 wall = e.get('wall') or {}
                 if wall.get('id') != self._target_wall:
@@ -357,14 +370,8 @@ class TaskRepresenter(Node):
                 center_mm = np.array(c_mm, dtype=np.float32)
                 diff = wall_pts_ifc_mm - center_mm
                 if is_cyl:
-                    face = e.get('face')
-                    if face is None or len(face) != 3:
-                        break
-                    axis = np.array(face, dtype=np.float32)
-                    n = float(np.linalg.norm(axis))
-                    if n < 1e-6:
-                        break
-                    axis /= n
+                    # Cylinder axis = wall's axis2 (perpendicular to wall).
+                    axis = np.array(axis2, dtype=np.float32)
                     along = diff @ axis
                     perp_sq = np.sum(diff * diff, axis=1) - along * along
                     inside = (np.abs(along) <= p_length / 2.0) & (
@@ -378,34 +385,38 @@ class TaskRepresenter(Node):
                 blue_mask |= inside & in_sphere
                 break
 
-        # Color-based task representation
-        # Red (on-wall danger zone): points inside penetration volume (high danger)
-        # Orange (beyond-wall danger zone): points inside projection shadow (medium danger)
-        # Blue (on-wall task zone): points corresponding to the selected element
-        # Green (working area): points where the robot can operate safely (low danger)
-        # Priority: red > blue > orange > green.
+        # Apply priority red > blue > orange > green, then collapse into one
+        # uint8 category per point.
         blue_mask &= ~red_mask
         orange_mask &= ~red_mask & ~blue_mask
         green_mask = in_sphere & ~red_mask & ~blue_mask & ~orange_mask
         keep_mask = green_mask | orange_mask | blue_mask | red_mask
         kept_pts = wall_pts[keep_mask]
-        kept_red = red_mask[keep_mask]
-        kept_blue = blue_mask[keep_mask]
-        kept_orange = orange_mask[keep_mask]
+        categories = np.zeros(len(kept_pts), dtype=np.uint8)
+        # Assign lowest priority first so higher-priority overwrites.
+        categories[green_mask[keep_mask]] = CATEGORY_GREEN
+        categories[orange_mask[keep_mask]] = CATEGORY_ORANGE
+        categories[blue_mask[keep_mask]] = CATEGORY_BLUE
+        categories[red_mask[keep_mask]] = CATEGORY_RED
+        totals = (int(red_mask.sum()), int(orange_mask.sum()),
+                  int(blue_mask.sum()), int(green_mask.sum()))
+        return kept_pts, categories, totals
 
-        green_rgb = self._pack_rgb(0, 255, 0)
-        orange_rgb = self._pack_rgb(255, 140, 0)
-        red_rgb = self._pack_rgb(255, 0, 0)
-        blue_rgb = self._pack_rgb(0, 0, 255)
+    def _publish_representation(
+            self, kept_pts: np.ndarray, categories: np.ndarray) -> None:
+        """Colored PointCloud2 for RViz, derived from the category array."""
+        rgb_by_cat = {
+            CATEGORY_RED: self._pack_rgb(255, 0, 0),
+            CATEGORY_ORANGE: self._pack_rgb(255, 140, 0),
+            CATEGORY_BLUE: self._pack_rgb(0, 0, 255),
+            CATEGORY_GREEN: self._pack_rgb(0, 255, 0),
+        }
+        default_rgb = rgb_by_cat[CATEGORY_GREEN]
         points = [
             (float(p[0]), float(p[1]), float(p[2]),
-             red_rgb if bool(is_red) else
-             (blue_rgb if bool(is_blue) else
-              (orange_rgb if bool(is_orange) else green_rgb)))
-            for p, is_red, is_blue, is_orange in zip(
-                kept_pts, kept_red, kept_blue, kept_orange)
+             rgb_by_cat.get(int(c), default_rgb))
+            for p, c in zip(kept_pts, categories)
         ]
-
         fields = [
             PointField(name='x', offset=0,
                        datatype=PointField.FLOAT32, count=1),
@@ -416,43 +427,52 @@ class TaskRepresenter(Node):
             PointField(name='rgb', offset=12,
                        datatype=PointField.FLOAT32, count=1),
         ]
-        header = self._make_header()
-        cloud_msg = point_cloud2.create_cloud(header, fields, points)
+        cloud_msg = point_cloud2.create_cloud(
+            self._make_header(), fields, points)
         self._representation_pub.publish(cloud_msg)
-        self.get_logger().info(
-            f'Published {len(points)} task-representation points on '
-            f'/task/representation (wall={self._target_wall}, '
-            f'green={int(green_mask.sum())}, '
-            f'orange={int(orange_mask.sum())}, '
-            f'blue={int(blue_mask.sum())}, '
-            f'red={int(red_mask.sum())}).')
+
+    def _publish_zones(
+            self, kept_pts: np.ndarray, categories: np.ndarray) -> None:
+        """Category-tagged PointCloud2 for downstream consumers (motion
+        planner, validators). Layout per point: 3xFLOAT32 (x,y,z) + UINT8
+        category + 3 bytes pad, point_step=16 (4-byte aligned)."""
+        n = len(kept_pts)
+        struct_dtype = np.dtype([
+            ('x', np.float32),
+            ('y', np.float32),
+            ('z', np.float32),
+            ('category', np.uint8),
+            ('_pad', np.uint8, 3),
+        ])
+        data = np.zeros(n, dtype=struct_dtype)
+        data['x'] = kept_pts[:, 0]
+        data['y'] = kept_pts[:, 1]
+        data['z'] = kept_pts[:, 2]
+        data['category'] = categories
+        msg = PointCloud2()
+        msg.header = self._make_header()
+        msg.height = 1
+        msg.width = n
+        msg.fields = [
+            PointField(name='x', offset=0,
+                       datatype=PointField.FLOAT32, count=1),
+            PointField(name='y', offset=4,
+                       datatype=PointField.FLOAT32, count=1),
+            PointField(name='z', offset=8,
+                       datatype=PointField.FLOAT32, count=1),
+            PointField(name='category', offset=12,
+                       datatype=PointField.UINT8, count=1),
+        ]
+        msg.is_bigendian = False
+        msg.point_step = struct_dtype.itemsize
+        msg.row_step = msg.point_step * n
+        msg.data = data.tobytes()
+        msg.is_dense = True
+        self._zones_pub.publish(msg)
 
     @staticmethod
     def _element_aabb_mm(e: dict) -> tuple[np.ndarray, np.ndarray] | None:
-        """Return (center_mm, half_extents_mm) AABB of the element in IFC
-        frame, derived from its shape. Cylindrical uses face+radius+length,
-        rectangular uses sizeX/Y/Z, otherwise falls back to bbox_min/max."""
-        shape_type = e.get('shapeType')
         center = e.get('center')
-        if shape_type == 'cylindrical' or (
-                e.get('radius') is not None and e.get('length') is not None):
-            if center is None or len(center) != 3:
-                return None
-            face = e.get('face')
-            r = e.get('radius')
-            L = e.get('length')
-            if face is None or len(face) != 3 or r is None or L is None:
-                return None
-            a = np.array(face, dtype=np.float64)
-            n = float(np.linalg.norm(a))
-            if n < 1e-6:
-                return None
-            a /= n
-            half = np.array([
-                L / 2.0 * abs(a[k]) + r * np.sqrt(max(0.0, 1.0 - a[k] * a[k]))
-                for k in range(3)
-            ], dtype=np.float32)
-            return np.array(center, dtype=np.float32), half
         if (e.get('sizeX') is not None and e.get('sizeY') is not None
                 and e.get('sizeZ') is not None):
             if center is None or len(center) != 3:
