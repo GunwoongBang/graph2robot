@@ -17,3 +17,8 @@ user interacts with rviz to clikc on an mep element and robot pops up in the rig
 - A vertical pipe behind the wall whose Y matches the receptacle Y (your dataset already had a single orange point for exactly this).
 
 If in each case the color you'd expect (red/orange) actually appears at the geometry you care about — even though the target itself is blue — the system is doing real work that the human "I picked a workable point" assumption alone can't provide.
+
+### How to use task_representation
+previous pipeline was publishing only the color-coded danger zones, which is only consumed by rviz2. This is not what we want. So the process is not split into two partts compute and render
+render part is consumed again by the rviz visualization while compute goes to /task/danger_zones and utilized by moveit for motion planning
+It is essential and very important because now task_representation is not just a visual mark but now plays a significant role for motion planning
