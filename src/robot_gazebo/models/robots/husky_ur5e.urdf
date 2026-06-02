@@ -116,7 +116,7 @@
     <child link="front_left_wheel"/>
     <origin rpy="0 0 0" xyz="0.256 0.2775 0.03282"/>
     <axis rpy="0 0 0" xyz="0 1 0"/>
-    <dynamics damping="0.5" friction="0.1"/>
+    <dynamics damping="0.5" friction="10"/>
   </joint>
   <link name="front_right_wheel">
     <inertial>
@@ -155,7 +155,7 @@
     <child link="front_right_wheel"/>
     <origin rpy="0 0 0" xyz="0.256 -0.2775 0.03282"/>
     <axis rpy="0 0 0" xyz="0 1 0"/>
-    <dynamics damping="0.5" friction="0.1"/>
+    <dynamics damping="0.5" friction="10"/>
   </joint>
   <link name="rear_left_wheel">
     <inertial>
@@ -194,7 +194,7 @@
     <child link="rear_left_wheel"/>
     <origin rpy="0 0 0" xyz="-0.256 0.2775 0.03282"/>
     <axis rpy="0 0 0" xyz="0 1 0"/>
-    <dynamics damping="0.5" friction="0.1"/>
+    <dynamics damping="0.5" friction="10"/>
   </joint>
   <link name="rear_right_wheel">
     <inertial>
@@ -233,7 +233,7 @@
     <child link="rear_right_wheel"/>
     <origin rpy="0 0 0" xyz="-0.256 -0.2775 0.03282"/>
     <axis rpy="0 0 0" xyz="0 1 0"/>
-    <dynamics damping="0.5" friction="0.1"/>
+    <dynamics damping="0.5" friction="10"/>
   </joint>
   <!-- <gazebo>
     <plugin filename="libignition-gazebo-wheel-slip-system.so" name="ignition::gazebo::systems::WheelSlip">

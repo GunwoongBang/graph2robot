@@ -105,12 +105,24 @@ def generate_launch_description() -> LaunchDescription:
         output='screen',
     )
 
+    # Needs the same MoveIt parameters move_group has so that its internal
+    # robot model loads (group definitions, kinematics, joint limits).
+    robot_motion_planner = Node(
+        package='robot_gazebo',
+        namespace='robot_gazebo',
+        executable='robot_motion_planner',
+        name='robot_motion_planner',
+        output='screen',
+        parameters=[moveit_config.to_dict(), {'use_sim_time': True}],
+    )
+
     return LaunchDescription([
         gazebo,
         robot_state_publisher,
         move_group,
         world_spawner,
         robot_spawner,
+        robot_motion_planner,
         joint_state_broadcaster_spawner,
         ur5e_arm_controller_spawner,
     ])

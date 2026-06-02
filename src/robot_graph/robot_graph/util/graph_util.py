@@ -18,6 +18,9 @@ WITH w,
 WITH w, [x IN raw WHERE x IS NOT NULL] AS space
 RETURN w.id AS id,
        w.axis2 AS axis2,
+       w.center AS center,
+       w.bbox_max AS bbox_max,
+       w.bbox_min AS bbox_min,
        w.directionSense AS directionSense,
        space
 ORDER BY w.name
@@ -92,6 +95,9 @@ def query_walls(driver: Driver, limit: int) -> list[dict[str, Any]]:
             walls.append({
                 'id': record['id'],
                 'axis2': record['axis2'],
+                'center': record['center'],
+                'bbox_max': record['bbox_max'],
+                'bbox_min': record['bbox_min'],
                 'directionSense': record['directionSense'],
                 'space': record['space'],
             })
