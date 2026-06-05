@@ -226,7 +226,7 @@ class TaskEvaluator(Node):
         if flip:
             wall_layers = list(reversed(wall_layers))
 
-        total_thickness = sum(
+        wall_thickness = sum(
             float(l.get('thickness', 0.0)) for l in wall_layers)
 
         # Drilling depth: penetrationLength for cylindrical, penetrationSizeY
@@ -249,7 +249,7 @@ class TaskEvaluator(Node):
                 }
                 for idx, l in enumerate(wall_layers)
             ],
-            'total_thickness': total_thickness,
+            'wall_thickness': wall_thickness,
             'drill_depth': drill_depth,
         }
         msg = String()
@@ -257,7 +257,7 @@ class TaskEvaluator(Node):
         self._wall_layer_info_pub.publish(msg)
         self.get_logger().info(
             f'Published /task/wall_layer_info: wall={self._target_wall}, '
-            f'{len(wall_layers)} layers, total={total_thickness:.1f} mm, '
+            f'{len(wall_layers)} layers, wall_thickness={wall_thickness:.1f} mm, '
             f'drill_depth={drill_depth} mm.')
 
 

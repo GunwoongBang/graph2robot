@@ -1,4 +1,5 @@
 import json
+import math
 import rclpy
 
 from rclpy.node import Node
@@ -165,6 +166,27 @@ class TaskGenerator(Node):
             f'Published IFC-frame target position on /robot/target_position: '
             f'pos=({ifc_xy[0]:.3f}, {ifc_xy[1]:.3f}, 0.000) heading=({hx:.3f}, {hy:.3f}).')
 
+    @staticmethod
+    def _cross(a: list[float], b: list[float]) -> list[float]:
+        return [
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0],
+        ]
+
+    @staticmethod
+    def _normalize(v: list[float]) -> list[float]:
+        mag = math.sqrt(sum(x * x for x in v))
+        return [x / mag for x in v] if mag > 1e-9 else v
+
+    def _project_onto_wall_surface(
+            self, mep_center_m: list[float], penetration_center_m: list[float],
+            half_thickness_m: float, facing: list[float]) -> tuple[float, float, float]:
+        p0 = [penetration_center_m[i] - facing[i]
+              * half_thickness_m for i in range(3)]
+        d = sum((mep_center_m[i] - p0[i]) * facing[i] for i in range(3))
+        return tuple(mep_center_m[i] - d * facing[i] for i in range(3))
+
     def publish_target_point(self) -> None:
         ctx = self._resolve_context()
         if ctx is None:
@@ -173,7 +195,7 @@ class TaskGenerator(Node):
 
         mep_center = self._selected_element.get('center')
         penetration_center = wall_obj.get('center')
-        length = wall_obj.get('length')
+        shape_type = self._selected_element.get('shapeType', 'cylindrical')
 
         if mep_center is None or len(mep_center) != 3:
             self.get_logger().warn(
@@ -181,51 +203,74 @@ class TaskGenerator(Node):
             return
         if penetration_center is None or len(penetration_center) != 3:
             self.get_logger().warn(
-                'target_point: missing/invalid wall.center; skipping.')
-            return
-        if length is None:
-            self.get_logger().warn(
-                'target_point: missing wall.length; skipping.')
+                'target_point: missing/invalid wall.penetration_center; skipping.')
             return
 
         mep_m = [float(mep_center[i]) / 1000.0 for i in range(3)]
         p_m = [float(penetration_center[i]) / 1000.0 for i in range(3)]
-        half_t_m = (float(length) / 1000.0) / 2.0
 
-        # P0 = point on the wall outer surface (the side the robot is on).
-        # Outer-surface normal points OUT of wall toward robot = -facing,
-        # so move from penetration midplane by -facing * half_thickness.
-        p0 = [p_m[i] - facing[i] * half_t_m for i in range(3)]
-        # Project mep_center onto the plane (sign of normal is irrelevant
-        # for the projection itself).
-        d = sum((mep_m[i] - p0[i]) * facing[i] for i in range(3))
-        entry = tuple(mep_m[i] - d * facing[i] for i in range(3))
-        depth_m = float(length) / 1000.0
+        if shape_type == 'cylindrical':
+            length = wall_obj.get('length')
+            if length is None:
+                self.get_logger().warn(
+                    'target_point: cylindrical element missing wall.length; skipping.')
+                return
+            half_t_m = float(length) / 2000.0
+            entry = self._project_onto_wall_surface(mep_m, p_m, half_t_m, facing)
+            points = [self._make_point(*entry, facing)]
+
+        else:  # rectangular
+            size_x = wall_obj.get('sizeX')
+            size_y = wall_obj.get('sizeY')
+            size_z = wall_obj.get('sizeZ')
+            if size_x is None or size_y is None or size_z is None:
+                self.get_logger().warn(
+                    'target_point: rectangular element missing wall.sizeX/Y/Z; skipping.')
+                return
+            half_t_m = float(size_y) / 2000.0
+            half_x_m = float(size_x) / 2000.0
+            half_z_m = float(size_z) / 2000.0
+
+            length_dir = self._normalize(self._cross([0.0, 0.0, 1.0], facing))
+            center_on_wall = self._project_onto_wall_surface(
+                mep_m, p_m, half_t_m, facing)
+
+            # Clockwise order when viewed from outside (robot side).
+            offsets = [
+                (+ half_x_m, + half_z_m),  # top-right
+                (- half_x_m, + half_z_m),  # top-left
+                (- half_x_m, - half_z_m),  # bottom-left
+                (+ half_x_m, - half_z_m),  # bottom-right
+            ]
+            points = []
+            for dx, dz in offsets:
+                corner = tuple(
+                    center_on_wall[i] + dx * length_dir[i] + dz * (1.0 if i == 2 else 0.0)
+                    for i in range(3)
+                )
+                points.append(self._make_point(*corner, facing))
 
         payload = {
-            'target_point': {
-                'x': entry[0],
-                'y': entry[1],
-                'z': entry[2],
-                # Drill axis points INTO the wall = facing direction.
-                'nx': float(facing[0]),
-                'ny': float(facing[1]),
-                'nz': float(facing[2]),
-                'depth': depth_m,
-                'thickness': depth_m,
-                'layers': None,
-                'wall_id': wall_obj.get('id'),
-                'mep_id': self._selected_element.get('id'),
-            },
+            'shape_type': shape_type,
+            'points': points,
+            'wall_id': wall_obj.get('id'),
+            'mep_id': self._selected_element.get('id'),
         }
         msg = String()
         msg.data = json.dumps(payload)
         self._target_point_pub.publish(msg)
         self.get_logger().info(
-            f'Published IFC-frame target point on /robot/target_point: '
-            f'entry=({entry[0]:.3f}, {entry[1]:.3f}, {entry[2]:.3f}) '
-            f'normal=({facing[0]:.3f}, {facing[1]:.3f}, {facing[2]:.3f}) '
-            f'depth={depth_m:.3f}m.')
+            f'Published /robot/target_point: shape={shape_type}, '
+            f'{len(points)} point(s).')
+
+    @staticmethod
+    def _make_point(x: float, y: float, z: float, normal: list[float]) -> dict:
+        return {
+            'x': x, 'y': y, 'z': z,
+            'nx': float(normal[0]),
+            'ny': float(normal[1]),
+            'nz': float(normal[2]),
+        }
 
 
 def main() -> None:
