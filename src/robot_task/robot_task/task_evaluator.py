@@ -27,20 +27,28 @@ class TaskEvaluator(Node):
             String, '/task/filtered_elements', latched_qos)
         self._target_wall_pub = self.create_publisher(
             String, '/task/target_wall', latched_qos)
+        # This topic is necessary for the actual drilling work but not being used in the current demo
+        self._wall_layer_info_pub = self.create_publisher(
+            String, '/task/wall_layer_info', latched_qos)
         # Subscribers
         self._space_sub = self.create_subscription(
             String, '/ifc/spaces', self._on_spaces, latched_qos)
         self._wall_sub = self.create_subscription(
             String, '/ifc/walls', self._on_walls, latched_qos)
-        self._mep_elements_sub = self.create_subscription(
+        self._layer_sub = self.create_subscription(
+            String, '/ifc/layers', self._on_layers, latched_qos)
+        self._mep_element_sub = self.create_subscription(
             String, '/ifc/mep_elements', self._on_mep_elements, latched_qos)
         self._selected_element_sub = self.create_subscription(
             String, '/task/selected_element', self._on_selected_element, latched_qos)
 
         self._spaces: list[dict] | None = None
         self._walls: list[dict] | None = None
+        self._layers: list[dict] | None = None
+        self._mep_elements: list[dict] | None = None
         self._target_wall: str | None = None
         self._filtered_elements: list[dict] | None = None
+        self._selected_element: dict | None = None
 
     def _on_spaces(self, msg: String) -> None:
         try:
@@ -67,6 +75,19 @@ class TaskEvaluator(Node):
             return
         self.get_logger().info(
             f'Received {len(self._walls)} walls on /ifc/walls.')
+
+    def _on_layers(self, msg: String) -> None:
+        try:
+            payload = json.loads(msg.data)
+        except json.JSONDecodeError as exc:
+            self.get_logger().error(f'Invalid /ifc/layers JSON: {exc}')
+            return
+        self._layers = payload.get('layers', [])
+        if self._layers is None:
+            self.get_logger().warn('/ifc/layers had no "layers" field.')
+            return
+        self.get_logger().info(
+            f'Received {len(self._layers)} layers on /ifc/layers.')
 
     def _on_mep_elements(self, msg: String) -> None:
         try:
@@ -97,10 +118,12 @@ class TaskEvaluator(Node):
             self.get_logger().warn(
                 '/task/selected_element had no "selected_element.wall.id" field.')
             return
+        self._selected_element = task
         self.get_logger().info(
             f'Received selected element on /task/selected_element; wall_id={self._target_wall}')
         self.publish_target_wall()
         self._refresh_filtered_elements()
+        self.publish_wall_layer_info()
 
     def _refresh_filtered_elements(self) -> None:
         if self._target_wall is None:
@@ -152,6 +175,90 @@ class TaskEvaluator(Node):
         self._target_wall_pub.publish(msg)
         self.get_logger().info(
             f'Published target wall on /task/target_wall.')
+
+    def publish_wall_layer_info(self) -> None:
+        if self._target_wall is None or self._selected_element is None:
+            return
+        if self._walls is None:
+            self.get_logger().warn(
+                '/ifc/walls not yet received; cannot publish wall_layer_info.')
+            return
+
+        wall = next(
+            (w for w in self._walls if w.get('id') == self._target_wall), None)
+        if wall is None:
+            self.get_logger().warn(
+                f'Wall {self._target_wall} not found in /ifc/walls.')
+            return
+
+        # Layers are embedded in the wall object from the graph query,
+        # sorted by layerIndex (canonical BIM order).
+        wall_layers = sorted(
+            wall.get('layers') or [],
+            key=lambda l: l.get('layerIndex', 0),
+        )
+
+        # Determine if the robot-side layer order needs to be flipped.
+        # Rule: if BOUNDED_BY.side and wall.directionSense are identical,
+        # the canonical layerIndex order is from the far side toward the robot,
+        # so we reverse it to get near→far (what the drill encounters first).
+        space_id = (self._selected_element.get('space') or {}).get('id')
+        flip = False
+        if wall and space_id:
+            direction_sense = wall.get('directionSense', '')
+            space_entry = next(
+                (s for s in (wall.get('space') or [])
+                 if s.get('id') == space_id), None)
+            if space_entry:
+                side = space_entry.get('side', '')
+                flip = str(side).upper() == str(direction_sense).upper()
+                self.get_logger().info(
+                    f'Layer order: side={side}, directionSense={direction_sense}'
+                    f' → {"flipped" if flip else "canonical"}.')
+            else:
+                self.get_logger().warn(
+                    f'Space {space_id} not found in wall {self._target_wall} '
+                    'boundary list; using canonical layer order.')
+        else:
+            self.get_logger().warn(
+                'Cannot resolve robot space or wall; using canonical layer order.')
+
+        if flip:
+            wall_layers = list(reversed(wall_layers))
+
+        total_thickness = sum(
+            float(l.get('thickness', 0.0)) for l in wall_layers)
+
+        # Drilling depth: penetrationLength for cylindrical, penetrationSizeY
+        # for rectangular (the dimension along the wall-normal axis).
+        wall_obj = self._selected_element.get('wall') or {}
+        shape_type = self._selected_element.get('shapeType', '')
+        if shape_type == 'cylindrical':
+            drill_depth = wall_obj.get('length')
+        else:
+            drill_depth = wall_obj.get('sizeY')
+
+        payload = {
+            'wall_id': self._target_wall,
+            'layers': [
+                {
+                    'id': l.get('id'),
+                    'name': l.get('name'),
+                    'order': idx,
+                    'thickness': l.get('thickness'),
+                }
+                for idx, l in enumerate(wall_layers)
+            ],
+            'total_thickness': total_thickness,
+            'drill_depth': drill_depth,
+        }
+        msg = String()
+        msg.data = json.dumps(payload)
+        self._wall_layer_info_pub.publish(msg)
+        self.get_logger().info(
+            f'Published /task/wall_layer_info: wall={self._target_wall}, '
+            f'{len(wall_layers)} layers, total={total_thickness:.1f} mm, '
+            f'drill_depth={drill_depth} mm.')
 
 
 def main() -> None:

@@ -73,7 +73,7 @@ class RobotMotionPlanner(Node):
             String, '/robot/motion_failed', volatile_qos)
         # Subscribers
         self.create_subscription(
-            String, '/task/target_point', self._on_target_point, latched_qos)
+            String, '/robot/target_point', self._on_target_point, latched_qos)
         self.create_subscription(
             PointCloud2, '/task/zones', self._on_zones, latched_qos)
         self.create_subscription(
@@ -97,12 +97,12 @@ class RobotMotionPlanner(Node):
             payload = json.loads(msg.data)
         except json.JSONDecodeError as exc:
             self.get_logger().error(
-                f'Invalid /task/target_point JSON: {exc}')
+                f'Invalid /robot/target_point JSON: {exc}')
             return
         self._target_point = payload.get('target_point')
         if self._target_point is None:
             self.get_logger().warn(
-                '/task/target_point had no "target_point" field.')
+                '/robot/target_point had no "target_point" field.')
             return
         self.get_logger().info(
             f"Got target_point mep_id={self._target_point.get('mep_id')} "
@@ -306,7 +306,7 @@ class RobotMotionPlanner(Node):
         return co
 
     def _compute_world_goal_pose(self) -> PoseStamped:
-        """Transform /task/target_point (IFC frame, meters) into a world-frame
+        """Transform /robot/target_point (IFC frame, meters) into a world-frame
         PoseStamped for drill_tip. The drill_tip's local z-axis is aligned
         with the published normal (axis pointing INTO the wall)."""
         tp = self._target_point or {}
