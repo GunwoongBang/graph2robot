@@ -10,7 +10,7 @@ from rclpy.qos import (
     ReliabilityPolicy,
 )
 from rclpy.task import Future
-from std_msgs.msg import String
+from std_msgs.msg import Empty, String
 from gazebo_msgs.msg import EntityState
 from gazebo_msgs.srv import SetEntityState, SpawnEntity
 from geometry_msgs.msg import Pose, TransformStamped
@@ -50,13 +50,15 @@ class RobotSpawner(Node):
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
         )
-        #
         volatile_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.VOLATILE,
             history=HistoryPolicy.KEEP_LAST,
         )
+        # Publishers
+        self._motion_ready_pub = self.create_publisher(
+            Empty, '/robot/motion_ready', volatile_qos)
         # Subscribers
         self._matrix_sub = self.create_subscription(
             String, '/matrix', self._on_matrix, latched_qos)
@@ -64,12 +66,8 @@ class RobotSpawner(Node):
             String, '/robot_description', self._on_robot_description, latched_qos)
         self._target_position_sub = self.create_subscription(
             String, '/robot/target_position', self._on_target_position, volatile_qos)
-        self._target_position_sub = self.create_subscription(
-            String, '/robot/target_position', self._on_target_position, volatile_qos)
 
         self._tf_broadcaster = StaticTransformBroadcaster(self)
-
-    # --- Setup ---------------------------------------------------------------
 
     def _on_robot_description(self, msg: String) -> None:
         if self._urdf_xml:
@@ -113,8 +111,6 @@ class RobotSpawner(Node):
         self._broadcast_base_link_tf(self._last_pose)
         self.get_logger().info(
             f'Spawned {ENTITY_NAME} at origin; waiting for target_position.')
-
-    # --- Teleport on click ---------------------------------------------------
 
     def _on_target_position(self, msg: String) -> None:
         if not self._spawned:
@@ -187,8 +183,8 @@ class RobotSpawner(Node):
         self._last_pose = pose
         self._broadcast_base_link_tf(pose)
         self.get_logger().info(f'Teleported {ENTITY_NAME} to target pose.')
-
-    # --- /matrix -------------------------------------------------------------
+        # Signal the motion planner that the base is at rest.
+        self._motion_ready_pub.publish(Empty())
 
     def _on_matrix(self, msg: String) -> None:
         try:
@@ -204,11 +200,7 @@ class RobotSpawner(Node):
         self._matrix = mat
         self.get_logger().info('Received transform matrix on /matrix.')
 
-    # --- TF ------------------------------------------------------------------
-
     def _broadcast_base_link_tf(self, pose: Pose) -> None:
-        """Publish static world -> base_link transform matching the model's
-        current pose so RViz/MoveIt see the robot where Gazebo placed it."""
         t = TransformStamped()
         t.header.stamp = self.get_clock().now().to_msg()
         t.header.frame_id = 'world'

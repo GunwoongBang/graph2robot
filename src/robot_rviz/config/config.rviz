@@ -6,7 +6,7 @@ Panels:
       Expanded:
         - /Status1
         - /MotionPlanning1
-        - /MotionPlanning1/Status1
+        - /MotionPlanning1/Scene Geometry1
         - /MotionPlanning1/Planning Request1
       Splitter Ratio: 0.5076586604118347
     Tree Height: 213
@@ -302,10 +302,10 @@ Visualization Manager:
       Planning Scene Topic: /monitored_planning_scene
       Robot Description: robot_description
       Scene Geometry:
-        Scene Alpha: 0.8999999761581421
+        Scene Alpha: 0
         Scene Color: 50; 230; 50
         Scene Display Time: 0.009999999776482582
-        Show Scene Geometry: true
+        Show Scene Geometry: false
         Voxel Coloring: Z-Axis
         Voxel Rendering: Occupied Voxels
       Scene Robot:
@@ -461,25 +461,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 3.647270679473877
+      Distance: 3.024956703186035
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 2.4822020530700684
-        Y: 0.5479336380958557
-        Z: -0.3228067457675934
+        X: 3.104903221130371
+        Y: 0.8281093835830688
+        Z: 0.3877617120742798
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.6497972011566162
+      Pitch: 0.7397971749305725
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz_default_plugins)
-      Yaw: 0.787229061126709
+      Yaw: 0.8922302722930908
     Saved: ~
 Window Geometry:
   Displays:

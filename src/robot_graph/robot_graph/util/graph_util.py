@@ -10,16 +10,26 @@ LIMIT $limit
 
 _QUERY_WALLS = """
 MATCH (w:Wall)
-OPTIONAL MATCH (s:Space)-[b:BOUNDED_BY]->(w:Wall)
+OPTIONAL MATCH (s:Space)-[b:BOUNDED_BY]->(w)
 WITH w,
      collect(CASE WHEN s IS NULL THEN NULL ELSE {
          id: s.id, side: b.side
      } END) AS raw
 WITH w, [x IN raw WHERE x IS NOT NULL] AS space
+OPTIONAL MATCH (w)-[:HAS_LAYER]->(l:Layer)
+WITH w, space,
+     collect(CASE WHEN l IS NULL THEN NULL ELSE {
+         id: l.id, name: l.name, layerIndex: l.layerIndex, thickness: l.thickness
+     } END) AS l_raw
+WITH w, space, [x IN l_raw WHERE x IS NOT NULL] AS layers
 RETURN w.id AS id,
        w.axis2 AS axis2,
+       w.center AS center,
+       w.bbox_max AS bbox_max,
+       w.bbox_min AS bbox_min,
        w.directionSense AS directionSense,
-       space
+       space,
+       layers
 ORDER BY w.name
 LIMIT $limit
 """
@@ -92,8 +102,12 @@ def query_walls(driver: Driver, limit: int) -> list[dict[str, Any]]:
             walls.append({
                 'id': record['id'],
                 'axis2': record['axis2'],
+                'center': record['center'],
+                'bbox_max': record['bbox_max'],
+                'bbox_min': record['bbox_min'],
                 'directionSense': record['directionSense'],
                 'space': record['space'],
+                'layers': record['layers'],
             })
     return walls
 
@@ -108,6 +122,7 @@ def query_layers(driver: Driver, limit: int) -> list[dict[str, Any]]:
                 'name': record['name'],
                 'layerIndex': record['layerIndex'],
                 'thickness': record['thickness'],
+                'wall_id': record['wall_id'],
             })
     return layers
 

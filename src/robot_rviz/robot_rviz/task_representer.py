@@ -17,8 +17,7 @@ from sensor_msgs.msg import PointCloud2, PointField
 from sensor_msgs_py import point_cloud2
 from std_msgs.msg import String
 
-# Both constants are arbitrary
-# With UR5e's URDF and LLM(?), it can be more generalized
+# With UR5e's URDF and LLM, it can be more generalized
 SPHERE_RADIUS = 0.811  # meters; UR5e reach by default.
 CENTER_Z_OFFSET = 0.529  # meters; height where the shoulder joint sits
 CSV_FILENAME = 'cloudGlobal_cleaned_excluded.csv'

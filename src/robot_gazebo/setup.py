@@ -77,6 +77,7 @@ setup(
         'console_scripts': [
             'robot_spawner=robot_gazebo.robot_spawner:main',
             'world_spawner=robot_gazebo.world_spawner:main',
+            'robot_motion_planner=robot_gazebo.robot_motion_planner:main',
         ],
     },
 )

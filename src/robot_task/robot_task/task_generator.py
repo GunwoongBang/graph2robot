@@ -26,7 +26,7 @@ class TaskGenerator(Node):
         self._target_position_pub = self.create_publisher(
             String, '/robot/target_position', latched_qos)
         self._target_point_pub = self.create_publisher(
-            String, '/task/target_point', latched_qos)
+            String, '/robot/target_point', latched_qos)
         # Subscribers
         self._selected_element_sub = self.create_subscription(
             String, '/task/selected_element', self._on_selected_element, latched_qos)
@@ -222,7 +222,7 @@ class TaskGenerator(Node):
         msg.data = json.dumps(payload)
         self._target_point_pub.publish(msg)
         self.get_logger().info(
-            f'Published IFC-frame target point on /task/target_point: '
+            f'Published IFC-frame target point on /robot/target_point: '
             f'entry=({entry[0]:.3f}, {entry[1]:.3f}, {entry[2]:.3f}) '
             f'normal=({facing[0]:.3f}, {facing[1]:.3f}, {facing[2]:.3f}) '
             f'depth={depth_m:.3f}m.')
