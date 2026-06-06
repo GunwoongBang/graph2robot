@@ -60,3 +60,11 @@ So the motion planning has been covered somehow. But there are still some tasks 
         + publisher: published
         + subscriber: received
     - Still need to clean the task_representation
+
+
+
+SKILL NODE IS FUCKING BRILLIANT.
+skill node has attributes of skills
+and each skill trigger different methods in a runtime using if statements (e.g., if Skill_1 = Method(=> ))
+
+robot_motion_planner should not also have the functions only drilling

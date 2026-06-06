@@ -89,3 +89,9 @@ Write robot_motion_planner in robot_gazebo:
 3. Call MoveIt to plan to the drill pose using MoveItPy (Python API) or the MoveGroupInterface action.
 4. Execute.
 5. Publish a "drill complete" signal that robot_spawner consumes — replacing its 5-second timer.
+
+How to refactor drilling specific logic?
+- in the previous stage they were given color-based status, and those are using in the `motion_planner` to trigger specific robot motions (like speed up, stop, etc.), and there are different motions you can choose like
+  - RED: stop
+  - ORANGE: print warning message, slow down, etc.
+  - BLUE, GREEN: -
