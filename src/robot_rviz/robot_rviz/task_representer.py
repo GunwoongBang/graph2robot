@@ -18,7 +18,7 @@ from sensor_msgs_py import point_cloud2
 from std_msgs.msg import String
 
 # With UR5e's URDF and LLM, it can be more generalized
-SPHERE_RADIUS = 0.811  # meters; UR5e reach by default.
+SPHERE_RADIUS = 1.00  # meters; UR5e 850mm reach + 150mm drill tip ≈ 1.0m max.
 CENTER_Z_OFFSET = 0.529  # meters; height where the shoulder joint sits
 CSV_FILENAME = 'cloudGlobal_cleaned_excluded.csv'
 
@@ -432,9 +432,6 @@ class TaskRepresenter(Node):
 
     def _publish_zones(
             self, kept_pts: np.ndarray, categories: np.ndarray) -> None:
-        """Category-tagged PointCloud2 for downstream consumers (motion
-        planner, validators). Layout per point: 3xFLOAT32 (x,y,z) + UINT8
-        category + 3 bytes pad, point_step=16 (4-byte aligned)."""
         n = len(kept_pts)
         struct_dtype = np.dtype([
             ('x', np.float32),

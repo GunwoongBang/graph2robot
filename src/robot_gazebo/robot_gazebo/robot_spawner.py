@@ -23,12 +23,6 @@ FLOOR_HUSKY_Z = -0.405
 
 
 class RobotSpawner(Node):
-    """Spawns the husky+UR5e once at startup, then teleports it on each
-    /robot/target_position event using /gazebo/set_entity_state. The controller
-    manager (gazebo_ros2_control) lives inside the spawned model, so teleporting
-    (instead of delete+respawn) keeps controllers + MoveIt connected across
-    multiple drilling targets."""
-
     def __init__(self) -> None:
         super().__init__('robot_spawner')
 

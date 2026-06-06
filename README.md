@@ -36,7 +36,7 @@ Then how do i get the surface information of the mep element cause we are only d
 
 ### Next step
 So the motion planning has been covered somehow. But there are still some tasks left.
-1. We are dealing not only with pipes but receptacles or light switches. But they have a different mechanisms with robot-pipe operation because pipe only requires one big hole drilling in the center, while those elements need 4 holes in its each corner. 
+1. We are dealing not only with pipes but receptacles or light switches. But they have a different mechanisms with robot-pipe operation because pipe only requires one big hole drilling in the center, while those elements need 4 holes in its each corner. (DONE)
     - Then how can I encode the task information in each mep element?
     - To do so, the orientation of robot should be changed because the current robot position is too close to wall to work with the lower receptacles
 2. Wall information is still missing. It does not need to be exhibited during the robot operation but it is required. (DONE)

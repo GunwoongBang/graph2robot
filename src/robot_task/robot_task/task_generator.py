@@ -11,6 +11,8 @@ from rclpy.qos import (
 )
 from std_msgs.msg import String
 
+CENTER_Z_OFFSET = 0.529  # meters; height where the shoulder joint sits
+
 
 class TaskGenerator(Node):
     def __init__(self) -> None:
@@ -137,12 +139,13 @@ class TaskGenerator(Node):
                 'target_position: missing/invalid wall.center; skipping.')
             return
 
-        # IFC center is in millimeters; compute robot base position in IFC
-        # frame (meters). Robot stands behind its facing direction so:
-        #   robot_pos = wall_center - facing * offset
+        penet_z_mm = float(center[2])
+        # When the penetration is low, the robot needs to step back more to avoid
+        # Otherwise, it can get closer to the wall, which is better for the arm reachability and stability.
+        offset = 0.9 if penet_z_mm < CENTER_Z_OFFSET * 1000.0 else 0.6
+
         cx = center[0] / 1000.0
         cy = center[1] / 1000.0
-        offset = 0.6  # distance from wall to robot base
         ifc_xy = (cx - facing[0] * offset, cy - facing[1] * offset)
 
         # Robot heading = facing direction (it looks toward the wall).
@@ -164,7 +167,9 @@ class TaskGenerator(Node):
         self._target_position_pub.publish(msg)
         self.get_logger().info(
             f'Published IFC-frame target position on /robot/target_position: '
-            f'pos=({ifc_xy[0]:.3f}, {ifc_xy[1]:.3f}, 0.000) heading=({hx:.3f}, {hy:.3f}).')
+            f'pos=({ifc_xy[0]:.3f}, {ifc_xy[1]:.3f}, 0.000) '
+            f'heading=({hx:.3f}, {hy:.3f}) offset={offset:.1f}m '
+            f'(penet_z={penet_z_mm:.0f}mm).')
 
     @staticmethod
     def _cross(a: list[float], b: list[float]) -> list[float]:
@@ -216,7 +221,8 @@ class TaskGenerator(Node):
                     'target_point: cylindrical element missing wall.length; skipping.')
                 return
             half_t_m = float(length) / 2000.0
-            entry = self._project_onto_wall_surface(mep_m, p_m, half_t_m, facing)
+            entry = self._project_onto_wall_surface(
+                mep_m, p_m, half_t_m, facing)
             points = [self._make_point(*entry, facing)]
 
         else:  # rectangular
@@ -235,7 +241,7 @@ class TaskGenerator(Node):
             center_on_wall = self._project_onto_wall_surface(
                 mep_m, p_m, half_t_m, facing)
 
-            # Clockwise order when viewed from outside (robot side).
+            # Counterclockwise order when viewed from robot side.
             offsets = [
                 (+ half_x_m, + half_z_m),  # top-right
                 (- half_x_m, + half_z_m),  # top-left
@@ -245,7 +251,8 @@ class TaskGenerator(Node):
             points = []
             for dx, dz in offsets:
                 corner = tuple(
-                    center_on_wall[i] + dx * length_dir[i] + dz * (1.0 if i == 2 else 0.0)
+                    center_on_wall[i] + dx * length_dir[i] +
+                    dz * (1.0 if i == 2 else 0.0)
                     for i in range(3)
                 )
                 points.append(self._make_point(*corner, facing))
