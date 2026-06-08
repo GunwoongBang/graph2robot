@@ -17,7 +17,6 @@ class GraphClient(Node):
     def __init__(self) -> None:
         super().__init__('graph_client')
 
-        # === Service servers and clients ===
         # Clients
         self._space_cli = self.create_client(
             Trigger, '/graph/list_spaces')
@@ -28,7 +27,6 @@ class GraphClient(Node):
         self._mep_element_cli = self.create_client(
             Trigger, '/graph/list_mep_elements')
 
-        # === Topic publishers and subscribers ===
         latched_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.RELIABLE,

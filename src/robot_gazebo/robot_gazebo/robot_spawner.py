@@ -31,13 +31,11 @@ class RobotSpawner(Node):
         self._matrix: np.ndarray | None = None
         self._last_pose: Pose | None = None
 
-        # === Service servers and clients ===
-        # === Clients ===
+        # Clients
         self._spawn_cli = self.create_client(SpawnEntity, '/spawn_entity')
         self._set_state_cli = self.create_client(
             SetEntityState, '/gazebo/set_entity_state')
 
-        # === Topic publishers and subscribers ===
         latched_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.RELIABLE,

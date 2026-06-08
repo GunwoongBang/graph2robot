@@ -44,7 +44,6 @@ class GraphServer(Node):
                 self.get_logger().error(
                     f'Failed to connect to Neo4j at {uri}: {exc}.')
 
-        # === Service servers and clients ===
         # Servers
         self._space_srv = self.create_service(
             Trigger, '/graph/list_spaces', self._handle_list_spaces)

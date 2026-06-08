@@ -1,76 +1,91 @@
 -- name: QUERY_SPACES
 MATCH (s:Space)
-RETURN s.id AS id
+OPTIONAL MATCH (s)-[b:BOUNDED_BY]->(w:Wall)
+WITH s,
+     collect(CASE WHEN w IS NULL THEN NULL ELSE {
+         type: 'bounded_by', id: w.id, side: b.side
+     } END) AS wall_raw
+OPTIONAL MATCH (s)-[:HOSTS]->(me:MEPElement)
+WITH s, wall_raw,
+     collect(CASE WHEN me IS NULL THEN NULL ELSE {
+         type: 'hosts', id: me.id
+     } END) AS mep_raw
+RETURN s.id AS id,
+       'IfcSpace' AS type,
+       {} AS attributes,
+       [x IN wall_raw WHERE x IS NOT NULL] +
+       [x IN mep_raw  WHERE x IS NOT NULL] AS relationship
 ORDER BY s.name
 LIMIT $limit
 
 -- name: QUERY_WALLS
 MATCH (w:Wall)
-OPTIONAL MATCH (s:Space)-[b:BOUNDED_BY]->(w)
-WITH w,
-     collect(CASE WHEN s IS NULL THEN NULL ELSE {
-         id: s.id, side: b.side
-     } END) AS raw
-WITH w, [x IN raw WHERE x IS NOT NULL] AS space
 OPTIONAL MATCH (w)-[:HAS_LAYER]->(l:Layer)
-WITH w, space,
+WITH w,
      collect(CASE WHEN l IS NULL THEN NULL ELSE {
-         id: l.id, name: l.name, layerIndex: l.layerIndex, thickness: l.thickness
-     } END) AS l_raw
-WITH w, space, [x IN l_raw WHERE x IS NOT NULL] AS layers
+         type: 'has_layer', id: l.id
+     } END) AS layer_raw
+OPTIONAL MATCH (w)-[p:PENETRATED_BY]->(me:MEPElement)
+WITH w, layer_raw,
+     collect(CASE WHEN me IS NULL THEN NULL ELSE {
+         type:    'penetrated_by',
+         id:       me.id,
+         center:   p.penetrationCenter,
+         depth_mm: p.penetrationLength,
+         radius:   p.penetrationRadius,
+         sizeX:    p.penetrationSizeX,
+         sizeY:    p.penetrationSizeY,
+         sizeZ:    p.penetrationSizeZ
+     } END) AS penet_raw
 RETURN w.id AS id,
-       w.axis2 AS axis2,
-       w.center AS center,
-       w.bbox_max AS bbox_max,
-       w.bbox_min AS bbox_min,
-       w.directionSense AS directionSense,
-       space,
-       layers
+       'IfcWallStandardCase' AS type,
+       {
+           axis2:          w.axis2,
+           center:         w.center,
+           bbox_min:       w.bbox_min,
+           bbox_max:       w.bbox_max,
+           directionSense: w.directionSense
+       } AS attributes,
+       [x IN layer_raw WHERE x IS NOT NULL] +
+       [x IN penet_raw WHERE x IS NOT NULL] AS relationship
 ORDER BY w.name
 LIMIT $limit
 
 -- name: QUERY_LAYERS
-MATCH (w:Wall)-[:HAS_LAYER]->(l:Layer)
+MATCH (l:Layer)
 RETURN l.id AS id,
-       l.name AS name,
-       l.layerIndex AS layerIndex,
-       l.thickness AS thickness,
-       w.id AS wall_id
+       'IfcMaterialLayer' AS type,
+       {
+           name:       l.name,
+           layerIndex: l.layerIndex,
+           thickness:  l.thickness
+       } AS attributes,
+       [] AS relationship
 ORDER BY l.name
+LIMIT $limit
+
+-- name: QUERY_MEP_SYSTEMS
+MATCH (ms:MEPSystem)
+RETURN ms.id AS id,
+       'IfcDistributionSystem' AS type,
+       {
+           name: ms.name
+       } AS attributes,
+       [] AS relationship
+ORDER BY ms.name
 LIMIT $limit
 
 -- name: QUERY_MEP_ELEMENTS
 MATCH (me:MEPElement)
-OPTIONAL MATCH (s:Space)-[:HOSTS]->(me:MEPElement)
-WITH me,
-     collect(CASE WHEN s IS NULL THEN NULL ELSE {
-         id: s.id, name: s.name
-     } END) AS s_raw
-WITH me, head([x IN s_raw WHERE x IS NOT NULL]) AS space
-OPTIONAL MATCH (w:Wall)-[p:PENETRATED_BY]->(me:MEPElement)
-WITH me, space,
-     collect(CASE WHEN w IS NULL THEN NULL ELSE {
-         id: w.id,
-         center: p.penetrationCenter,
-         length: p.penetrationLength,
-         radius: p.penetrationRadius,
-         sizeX: p.penetrationSizeX,
-         sizeY: p.penetrationSizeY,
-         sizeZ: p.penetrationSizeZ
-     } END) AS w_raw
-WITH me, space, head([x IN w_raw WHERE x IS NOT NULL]) AS wall
 RETURN me.id AS id,
-       me.name AS name,
-       me.center AS center,
-       me.bbox_max AS bbox_max,
-       me.bbox_min AS bbox_min,
-       me.length AS length,
-       me.radius AS radius,
-       me.sizeX AS sizeX,
-       me.sizeY AS sizeY,
-       me.sizeZ AS sizeZ,
-       me.shapeType AS shapeType,
-       wall,
-       space
+       'IfcDistributionElement' AS type,
+       {
+           name:      me.name,
+           center:    me.center,
+           bbox_min:  me.bbox_min,
+           bbox_max:  me.bbox_max,
+           shapeType: me.shapeType
+       } AS attributes,
+       [] AS relationship
 ORDER BY me.name
 LIMIT $limit

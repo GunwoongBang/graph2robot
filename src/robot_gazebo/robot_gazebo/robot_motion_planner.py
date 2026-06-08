@@ -61,13 +61,11 @@ class RobotMotionPlanner(Node):
     def __init__(self) -> None:
         super().__init__('robot_motion_planner')
 
-        # === Service servers and clients ===
         # Clients
         self._move_group_cli = ActionClient(self, MoveGroup, '/move_action')
         self._scene_cli = self.create_client(
             ApplyPlanningScene, '/apply_planning_scene')
 
-        # === Topic publishers and subscribers ===
         latched_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.RELIABLE,
@@ -95,26 +93,15 @@ class RobotMotionPlanner(Node):
         self.create_subscription(
             String, '/matrix', self._on_matrix, latched_qos)
         self.create_subscription(
-            String, '/ifc/walls', self._on_walls, latched_qos)
-        self.create_subscription(
-            String, '/task/target_wall', self._on_target_wall, latched_qos)
-        self.create_subscription(
             Empty, '/robot/motion_ready', self._on_motion_ready, volatile_qos)
         self.create_subscription(
-            String, '/task/filtered_elements', self._on_filtered_elements, latched_qos)
-        self.create_subscription(
-            String, '/task/wall_layer_info', self._on_wall_layer_info, latched_qos)
+            String, '/drilling/context', self._on_drill_context, latched_qos)
 
-        # remaining drill targets
         self._pending_points: list[dict] | None = None
         self._shape_type: str | None = None
-        self._mep_id: str | None = None
         self._zones_msg: PointCloud2 | None = None
         self._matrix: np.ndarray | None = None
-        self._walls: list[dict] | None = None
-        self._target_wall_id: str | None = None
-        self._filtered_elements: list[dict] | None = None
-        self._wall_layer_info: dict | None = None
+        self._drill_context: dict | None = None
         self._busy = False
         self._advance_timer = None
 
@@ -132,7 +119,6 @@ class RobotMotionPlanner(Node):
             return
         self._pending_points = list(points)
         self._shape_type = payload.get('shape_type', 'cylindrical')
-        self._mep_id = payload.get('mep_id')
         self.get_logger().info(
             f"Got target_point: shape={self._shape_type}, "
             f"{len(self._pending_points)} point(s), "
@@ -143,27 +129,16 @@ class RobotMotionPlanner(Node):
         self.get_logger().info(
             f'Got /task/zones: {msg.width} points.')
 
-    def _on_walls(self, msg: String) -> None:
+    def _on_drill_context(self, msg: String) -> None:
         try:
-            payload = json.loads(msg.data)
+            self._drill_context = json.loads(msg.data)
         except json.JSONDecodeError as exc:
-            self.get_logger().error(f'Invalid /ifc/walls JSON: {exc}')
+            self.get_logger().error(f'Invalid /drilling/context JSON: {exc}')
             return
-        self._walls = payload.get('walls', [])
+        mep_id = (self._drill_context.get('element') or {}).get('id', '')
+        wall_id = (self._drill_context.get('wall') or {}).get('id', '')
         self.get_logger().info(
-            f'Got /ifc/walls: {len(self._walls)} walls.')
-
-    def _on_target_wall(self, msg: String) -> None:
-        try:
-            payload = json.loads(msg.data)
-        except json.JSONDecodeError as exc:
-            self.get_logger().error(
-                f'Invalid /task/target_wall JSON: {exc}')
-            return
-        self._target_wall_id = payload.get('wall_id')
-        if self._target_wall_id:
-            self.get_logger().info(
-                f'Got /task/target_wall: {self._target_wall_id}.')
+            f'Got /drilling/context: mep={mep_id} wall={wall_id}.')
 
     def _on_matrix(self, msg: String) -> None:
         try:
@@ -177,22 +152,6 @@ class RobotMotionPlanner(Node):
                 f'Matrix shape {mat.shape}, expected (4,4).')
             return
         self._matrix = mat
-
-    def _on_filtered_elements(self, msg: String) -> None:
-        try:
-            payload = json.loads(msg.data)
-        except json.JSONDecodeError as exc:
-            self.get_logger().error(f'Invalid /task/filtered_elements JSON: {exc}')
-            return
-        self._filtered_elements = payload.get('filtered_elements', [])
-
-    def _on_wall_layer_info(self, msg: String) -> None:
-        try:
-            payload = json.loads(msg.data)
-        except json.JSONDecodeError as exc:
-            self.get_logger().error(f'Invalid /task/wall_layer_info JSON: {exc}')
-            return
-        self._wall_layer_info = payload
 
     def _on_motion_ready(self, _msg: Empty) -> None:
         if self._busy:
@@ -212,53 +171,18 @@ class RobotMotionPlanner(Node):
         self._start_pipeline()
 
     def _check_orange_caution(self) -> None:
-        has_conflict, conflict_count = self._has_depth_conflict()
-        self._publish_drill_caution(has_conflict, conflict_count)
-
-    def _has_depth_conflict(self) -> tuple[bool, int]:
-        """Return (has_conflict, n_conflicting) using IFC metadata only."""
-        if not self._filtered_elements or not self._wall_layer_info:
-            return True, 0
-        drill_depth_mm = self._wall_layer_info.get('drill_depth')
-        if drill_depth_mm is None:
-            return True, 0
-
-        wall = next(
-            (w for w in (self._walls or []) if w.get('id') == self._target_wall_id),
-            None)
-        if wall is None or not self._pending_points:
-            return True, 0
-
-        pt = self._pending_points[0]
-        n = [float(pt.get('nx', 0.0)), float(pt.get('ny', 0.0)), float(pt.get('nz', 0.0))]
-        axis_idx = max(range(3), key=lambda i: abs(n[i]))
-        facing_sign = 1.0 if n[axis_idx] > 0.0 else -1.0
-
-        bbox_min = wall.get('bbox_min', [0.0, 0.0, 0.0])
-        bbox_max = wall.get('bbox_max', [0.0, 0.0, 0.0])
-        near_mm = float(bbox_max[axis_idx]) if facing_sign < 0 else float(bbox_min[axis_idx])
-
-        conflict_count = 0
-        for element in self._filtered_elements:
-            if element.get('id') == self._mep_id:
-                continue
-            elem_wall = element.get('wall') or {}
-            if elem_wall.get('id') != self._target_wall_id:
-                continue
-            penet_center = elem_wall.get('center') or []
-            if len(penet_center) < 3:
-                continue
-            coord = float(penet_center[axis_idx])
-            depth_mm = (near_mm - coord) if facing_sign < 0 else (coord - near_mm)
-            if 0.0 <= depth_mm <= float(drill_depth_mm):
-                self.get_logger().warn(
-                    f'Depth conflict: element {element.get("id")} at depth '
-                    f'{depth_mm:.1f} mm is within drill range {drill_depth_mm:.1f} mm.')
-                conflict_count += 1
-        return conflict_count > 0, conflict_count
+        if self._drill_context is None:
+            return
+        hazards = self._drill_context.get('hazards', [])
+        for h in hazards:
+            self.get_logger().warn(
+                f'Depth conflict: element {h.get("id")} ({h.get("name", "")}) '
+                f'at depth {h.get("depth_mm")} mm is within drill range.')
+        self._publish_drill_caution(len(hazards) > 0, len(hazards))
 
     def _publish_drill_caution(self, has_caution: bool, conflict_count: int) -> None:
-        payload = {'orange_caution': has_caution, 'conflicting_element_count': conflict_count}
+        payload = {'orange_caution': has_caution,
+                   'conflicting_element_count': conflict_count}
         msg = String()
         msg.data = json.dumps(payload)
         self._drill_caution_pub.publish(msg)
@@ -343,29 +267,12 @@ class RobotMotionPlanner(Node):
         return co
 
     def _build_target_wall_collision_object(self) -> CollisionObject | None:
-        """Build an axis-aligned box CollisionObject for the target wall.
-
-        Uses the wall's center + (bbox_max - bbox_min) from /ifc/walls, then
-        transforms IFC mm -> world m via the cached /matrix. The IFC bbox is
-        already axis-aligned in the IFC frame; for axis-aligned BIMs this
-        survives the (typically rigid) IFC->world rotation as an axis-aligned
-        box; for arbitrary rotations the box would be slightly conservative.
-        """
-        if not self._target_wall_id:
+        if self._drill_context is None:
             self.get_logger().warn(
-                'No /task/target_wall yet; planning without target wall.')
+                'No /drilling/context yet; planning without target wall.')
             return None
-        if not self._walls:
-            self.get_logger().warn(
-                'No /ifc/walls cached; planning without target wall.')
-            return None
-        wall = next(
-            (w for w in self._walls if w.get('id') == self._target_wall_id),
-            None)
-        if wall is None:
-            self.get_logger().warn(
-                f'Target wall {self._target_wall_id} not in /ifc/walls cache.')
-            return None
+        wall = self._drill_context.get('wall') or {}
+        wall_id = wall.get('id')
         center_mm = wall.get('center')
         bmin_mm = wall.get('bbox_min')
         bmax_mm = wall.get('bbox_max')
@@ -373,7 +280,7 @@ class RobotMotionPlanner(Node):
                 or bmin_mm is None or len(bmin_mm) != 3
                 or bmax_mm is None or len(bmax_mm) != 3):
             self.get_logger().warn(
-                f'Target wall {self._target_wall_id} missing center/bbox.')
+                f'Target wall {wall_id} missing center/bbox in context.')
             return None
 
         # IFC mm -> world m via the cached matrix.
@@ -405,7 +312,7 @@ class RobotMotionPlanner(Node):
         pose.orientation.w = 1.0
         co.primitive_poses.append(pose)
         self.get_logger().info(
-            f'Built target_wall CollisionObject id={self._target_wall_id} '
+            f'Built target_wall CollisionObject id={wall_id} '
             f'size=({size_m[0]:.3f}, {size_m[1]:.3f}, {size_m[2]:.3f}) m '
             f'at pos=({pose.position.x:.3f}, {pose.position.y:.3f}, '
             f'{pose.position.z:.3f}).')

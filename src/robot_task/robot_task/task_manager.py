@@ -24,7 +24,6 @@ class TaskManager(Node):
         package_share = Path(get_package_share_directory('robot_task'))
         self._matrix_yaml = package_share / 'config' / MATRIX_FILENAME
 
-        # === Topic publishers and subscribers ===
         latched_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.RELIABLE,

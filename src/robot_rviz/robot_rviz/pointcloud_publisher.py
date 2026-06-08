@@ -25,7 +25,6 @@ class PointCloudPublisher(Node):
         self.declare_parameter('frame_id', 'world')
         self._frame_id = self.get_parameter('frame_id').value
 
-        # === Topic publishers and subscribers ===
         latched_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.RELIABLE,

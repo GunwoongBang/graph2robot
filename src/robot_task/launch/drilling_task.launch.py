@@ -19,25 +19,25 @@ def generate_launch_description():
         output='screen',
     )
 
-    task_generator_node = Node(
+    drill_context_builder_node = Node(
         package='robot_task',
         namespace='drilling_task',
-        executable='task_generator',
-        name='task_generator',
+        executable='drill_context_builder',
+        name='drill_context_builder',
         output='screen',
     )
 
-    task_evaluator_node = Node(
+    drill_executor_node = Node(
         package='robot_task',
         namespace='drilling_task',
-        executable='task_evaluator',
-        name='task_evaluator',
+        executable='drill_executor',
+        name='drill_executor',
         output='screen',
     )
 
     return LaunchDescription([
         graph_client_node,
         task_manager_node,
-        task_generator_node,
-        task_evaluator_node,
+        drill_context_builder_node,
+        drill_executor_node,
     ])
