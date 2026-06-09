@@ -30,7 +30,6 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'graph_client=robot_task.graph_client:main',
             'task_manager=robot_task.task_manager:main',
             'task_generator=robot_task.task_generator:main',
             'task_evaluator=robot_task.task_evaluator:main',

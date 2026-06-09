@@ -54,8 +54,6 @@ class DrillContextBuilder(Node):
         # mep_id → space_id
         self._space_id_by_mep: dict[str, str] = {}
 
-    # ── IFC subscribers ──────────────────────────────────────────────────────
-
     def _on_walls(self, msg: String) -> None:
         payload = self._parse(msg, '/ifc/walls')
         if payload is None:
@@ -88,8 +86,6 @@ class DrillContextBuilder(Node):
         self.get_logger().info(
             f'Got /ifc/mep_elements: {len(self._mep_elements)} elements.')
         self._rebuild_indexes()
-
-    # ── Index builder ─────────────────────────────────────────────────────────
 
     def _rebuild_indexes(self) -> None:
         if any(x is None for x in (
@@ -124,8 +120,6 @@ class DrillContextBuilder(Node):
             f'Indexes built: {len(self._penet_by_mep)} drillable elements.')
         self._publish_elements()
 
-    # ── Element catalog ───────────────────────────────────────────────────────
-
     def _publish_elements(self) -> None:
         elements = []
         for mep_id, penet_rel in self._penet_by_mep.items():
@@ -158,8 +152,6 @@ class DrillContextBuilder(Node):
         self.get_logger().info(
             f'Published {len(elements)} drillable elements on /drilling/elements.')
 
-    # ── Selection handler ─────────────────────────────────────────────────────
-
     def _on_selected_element(self, msg: String) -> None:
         payload = self._parse(msg, '/task/selected_element')
         if payload is None:
@@ -175,15 +167,16 @@ class DrillContextBuilder(Node):
         msg_out = String()
         msg_out.data = json.dumps(context)
         self._context_pub.publish(msg_out)
+        nearby = context['nearby_elements']
+        n_robot = sum(1 for e in nearby if e['robot_side'])
+        n_far = len(nearby) - n_robot
         self.get_logger().info(
             f'Published /drilling/context for MEP {mep_id}: '
             f'wall={context["wall"]["id"]}, '
             f'{len(context["layers"])} layers, '
             f'wall_thickness={context["wall_thickness_mm"]:.1f} mm, '
             f'drill_depth={context["drill_depth_mm"]} mm, '
-            f'{len(context["hazards"])} hazard(s).')
-
-    # ── Context assembly ──────────────────────────────────────────────────────
+            f'nearby={len(nearby)} ({n_robot} robot-side, {n_far} far-side).')
 
     def _build_context(self, mep_id: str) -> dict | None:
         mep = self._mep_by_id.get(mep_id)
@@ -214,19 +207,34 @@ class DrillContextBuilder(Node):
             return None
         axis_idx, facing_sign, facing_vec = facing
 
+        mep_attrs = mep.get('attributes') or {}
+        shape_type = mep_attrs.get('shapeType', 'cylindrical')
+
+        # Pipes are hosted in the service space; drill from the habitable side.
+        # Fixtures are hosted in the room they serve; approach from that same side.
+        if shape_type == 'cylindrical':
+            facing_sign = -facing_sign
+            facing_vec = [-v for v in facing_vec]
+
         axis2 = wall_attrs.get('axis2', [0.0, 0.0, 0.0])
         flip = facing_sign * float(axis2[axis_idx]) > 0
         ordered_layers = self._ordered_layers(wall, flip)
         wall_thickness_mm = sum(
             l.get('thickness_mm') or 0.0 for l in ordered_layers)
-
-        mep_attrs = mep.get('attributes') or {}
-        shape_type = mep_attrs.get('shapeType', 'cylindrical')
         drill_depth_mm = (
             penet_rel.get('depth_mm') if shape_type == 'cylindrical' else penet_rel.get('sizeY'))
 
-        hazards = (self._compute_hazards(wall, axis_idx, facing_sign, float(drill_depth_mm), mep_id)
-                   if drill_depth_mm is not None else [])
+        # For cylindrical elements the robot approaches from the opposite side,
+        # so the robot's space is the one adjacent to the wall that is NOT the
+        # MEP's hosting space.
+        if shape_type == 'cylindrical':
+            robot_space_id = self._find_adjacent_space_id(wall_id, space_id)
+        else:
+            robot_space_id = space_id
+
+        nearby_elements = self._get_nearby_elements(
+            wall_id, robot_space_id, mep_id)
+
         return {
             'element': {
                 'id': mep_id,
@@ -256,11 +264,9 @@ class DrillContextBuilder(Node):
             'layers': ordered_layers,
             'wall_thickness_mm': wall_thickness_mm,
             'drill_depth_mm': drill_depth_mm,
-            'robot_space_id': space_id,
-            'hazards': hazards,
+            'robot_space_id': robot_space_id,
+            'nearby_elements': nearby_elements,
         }
-
-    # ── Geometry helpers ──────────────────────────────────────────────────────
 
     def _compute_facing(self, wall: dict, space_id: str) -> tuple[int, float, list[float]] | None:
         attrs = wall.get('attributes') or {}
@@ -316,38 +322,56 @@ class DrillContextBuilder(Node):
             for idx, l in enumerate(layers)
         ]
 
-    def _compute_hazards(
-            self, wall: dict, axis_idx: int, facing_sign: float,
-            drill_depth_mm: float, selected_mep_id: str) -> list[dict]:
-        attrs = wall.get('attributes') or {}
-        bbox_min = attrs.get('bbox_min', [0.0, 0.0, 0.0])
-        bbox_max = attrs.get('bbox_max', [0.0, 0.0, 0.0])
-        near_mm = float(bbox_max[axis_idx]) if facing_sign < 0 else float(
-            bbox_min[axis_idx])
+    def _find_adjacent_space_id(self, wall_id: str, exclude_space_id: str) -> str | None:
+        """Return the first space (other than exclude_space_id) that bounds wall_id."""
+        for space_id, space in self._spaces_by_id.items():
+            if space_id == exclude_space_id:
+                continue
+            for rel in (space.get('relationship') or []):
+                if rel.get('type') == 'bounded_by' and rel.get('id') == wall_id:
+                    return space_id
+        return None
 
-        hazards = []
-        for rel in (wall.get('relationship') or []):
-            if rel.get('type') != 'penetrated_by':
+    def _get_nearby_elements(self, wall_id: str, robot_space_id: str | None, selected_mep_id: str) -> list[dict]:
+        """All MEP elements hosted in spaces that bound this wall.
+
+        robot_side=True  → element is in the robot's space (→ RED in RViz)
+        robot_side=False → element is behind the wall       (→ ORANGE in RViz)
+        """
+        nearby: list[dict] = []
+        seen_ids: set[str] = {selected_mep_id}
+        for space_id, space in self._spaces_by_id.items():
+            bounds_wall = any(
+                r.get('type') == 'bounded_by' and r.get('id') == wall_id
+                for r in (space.get('relationship') or [])
+            )
+            if not bounds_wall:
                 continue
-            mep_id = rel.get('id')
-            if not mep_id or mep_id == selected_mep_id:
-                continue
-            center = rel.get('center') or []
-            if len(center) < 3:
-                continue
-            coord = float(center[axis_idx])
-            depth_mm = (
-                near_mm - coord) if facing_sign < 0 else (coord - near_mm)
-            if 0.0 <= depth_mm <= drill_depth_mm:
-                mep = self._mep_by_id.get(mep_id, {})
-                hazards.append({
-                    'id': mep_id,
-                    'name': (mep.get('attributes') or {}).get('name', ''),
-                    'depth_mm': round(depth_mm, 1),
+            robot_side = (space_id == robot_space_id)
+            for rel in (space.get('relationship') or []):
+                if rel.get('type') != 'hosts':
+                    continue
+                eid = rel.get('id')
+                if not eid or eid in seen_ids:
+                    continue
+                seen_ids.add(eid)
+                mep = self._mep_by_id.get(eid)
+                if mep is None:
+                    continue
+                attrs = mep.get('attributes') or {}
+                nearby.append({
+                    'id': eid,
+                    'name': attrs.get('name'),
+                    'center': attrs.get('center'),
+                    'bbox_min': attrs.get('bbox_min'),
+                    'bbox_max': attrs.get('bbox_max'),
+                    'robot_side': robot_side,
                 })
-        return hazards
-
-    # ── Utility ───────────────────────────────────────────────────────────────
+        self.get_logger().info(
+            f'Nearby elements for wall {wall_id}: {len(nearby)} '
+            f'({sum(1 for e in nearby if e["robot_side"])} robot-side, '
+            f'{sum(1 for e in nearby if not e["robot_side"])} far-side).')
+        return nearby
 
     def _parse(self, msg: String, topic: str) -> dict | None:
         try:

@@ -204,10 +204,12 @@ class TaskRepresenter(Node):
             self.get_logger().warn(
                 f'Wall {wall_id} has no valid axis2 in context.')
             return None
-        normal_axis = int(np.argmax(np.abs(axis2)))
-        surface_axes = [i for i in range(3) if i != normal_axis]
 
-        # Convert wall cloud points and working-sphere center to IFC frame (mm).
+        # Wall surface axes: the two axes perpendicular to the wall normal.
+        normal_axis = int(np.argmax(np.abs(axis2)))
+        ax_a, ax_b = [i for i in range(3) if i != normal_axis]
+
+        # Convert wall cloud points to IFC frame (mm).
         inv_matrix = np.linalg.inv(self._matrix)
         homog = np.hstack([
             wall_pts.astype(np.float64),
@@ -215,114 +217,70 @@ class TaskRepresenter(Node):
         ])
         wall_pts_ifc_mm = ((inv_matrix @ homog.T).T[:, :3] * 1000.0).astype(
             np.float32)
+
+        # IFC-mm position of the working-sphere centre (robot shoulder).
         sphere_h = np.array(
             [center[0], center[1], center[2], 1.0], dtype=np.float64)
         sphere_ifc_mm = (inv_matrix @ sphere_h)[:3].astype(np.float64) * 1000.0
         sphere_r_mm = SPHERE_RADIUS * 1000.0
 
-        # Elements on this wall only
-        elements = [e for e in (self._drill_elements or [])
-                    if e.get('wall_id') == wall_id]
-
         red_mask = np.zeros_like(in_sphere)
         orange_mask = np.zeros_like(in_sphere)
         blue_mask = np.zeros_like(in_sphere)
 
-        # 1) On-wall danger zone (red) — other elements penetrating same wall
-        for e in elements:
-            if e.get('id') == selected_id:
-                continue
-            penet = e.get('penetration') or {}
-            c_mm = penet.get('center')
+        def _wall_footprint(c_mm: list, bmin: list | None, bmax: list | None) -> np.ndarray:
+            """Project element bounding box onto the wall surface (2D shadow)."""
+            if bmin is not None and bmax is not None and len(bmin) == 3 and len(bmax) == 3:
+                half_a = (float(bmax[ax_a]) - float(bmin[ax_a])) / 2.0
+                half_b = (float(bmax[ax_b]) - float(bmin[ax_b])) / 2.0
+            else:
+                half_a = half_b = 150.0  # 150 mm default radius when bbox missing
+            da = wall_pts_ifc_mm[:, ax_a] - float(c_mm[ax_a])
+            db = wall_pts_ifc_mm[:, ax_b] - float(c_mm[ax_b])
+            return (np.abs(da) <= half_a) & (np.abs(db) <= half_b)
+
+        # Nearby elements come from graph topology: all MEP elements hosted in
+        # spaces that bound the target wall, tagged robot_side True/False.
+        for e in self._drill_context.get('nearby_elements', []):
+            c_mm = e.get('center')
             if c_mm is None or len(c_mm) != 3:
                 continue
-            p_radius = penet.get('radius')
-            p_length = penet.get('depth_mm')
-            p_sizeX = penet.get('sizeX')
-            p_sizeY = penet.get('sizeY')
-            p_sizeZ = penet.get('sizeZ')
-            is_cyl = p_radius is not None and p_length is not None
-            is_box = p_sizeX is not None and p_sizeY is not None and p_sizeZ is not None
-            if not (is_cyl or is_box):
-                continue
-            center_mm = np.array(c_mm, dtype=np.float32)
-            diff = wall_pts_ifc_mm - center_mm
-            if is_cyl:
-                axis = np.array(axis2, dtype=np.float32)
-                along = diff @ axis
-                perp_sq = np.sum(diff * diff, axis=1) - along * along
-                inside = (np.abs(along) <= p_length /
-                          2.0) & (perp_sq <= p_radius * p_radius)
-            else:
-                inside = (
-                    (np.abs(diff[:, 0]) <= p_sizeX / 2.0) &
-                    (np.abs(diff[:, 1]) <= p_sizeY / 2.0) &
-                    (np.abs(diff[:, 2]) <= p_sizeZ / 2.0)
+            # Geometry-based sphere intersection: use AABB when available so that
+            # elongated elements (tall pipes, etc.) are not incorrectly excluded
+            # just because their centre is outside the sphere.
+            bmin = e.get('bbox_min')
+            bmax = e.get('bbox_max')
+            if bmin is not None and bmax is not None and len(bmin) == 3 and len(bmax) == 3:
+                closest = np.clip(
+                    sphere_ifc_mm,
+                    np.array(bmin, dtype=np.float64),
+                    np.array(bmax, dtype=np.float64),
                 )
-            red_mask |= inside & in_sphere
+                outside = float(np.sum((closest - sphere_ifc_mm) ** 2)) > sphere_r_mm ** 2
+            else:
+                ec = np.array(c_mm, dtype=np.float64)
+                outside = float(np.sum((ec - sphere_ifc_mm) ** 2)) > sphere_r_mm ** 2
+            if outside:
+                continue
+            footprint = _wall_footprint(c_mm, e.get('bbox_min'), e.get('bbox_max'))
+            if e.get('robot_side'):
+                red_mask |= footprint & in_sphere
+            else:
+                added = int((footprint & in_sphere).sum())
+                if added > 0:
+                    self.get_logger().info(
+                        f'  orange {e.get("id")} {e.get("name")}: +{added} pts')
+                orange_mask |= footprint & in_sphere
 
-        # 2) Beyond-wall danger zone (orange) — element AABB shadow on wall surface
-        sphere_min = sphere_ifc_mm - sphere_r_mm
-        sphere_max = sphere_ifc_mm + sphere_r_mm
-        for e in elements:
+        # 3) Blue — selected element's footprint on the wall surface.
+        for e in (self._drill_elements or []):
             if e.get('id') == selected_id:
-                continue
-            aabb = self._element_aabb_mm(e)
-            if aabb is None:
-                continue
-            e_center_mm, half_mm = aabb
-            clip_min = np.maximum(e_center_mm - half_mm, sphere_min)
-            clip_max = np.minimum(e_center_mm + half_mm, sphere_max)
-            if np.any(clip_min > clip_max):
-                continue
-            clip_center = (clip_min + clip_max) / 2.0
-            clip_half = (clip_max - clip_min) / 2.0
-            a, b = surface_axes
-            shadow = (
-                (np.abs(wall_pts_ifc_mm[:, a] - clip_center[a]) <= clip_half[a]) &
-                (np.abs(wall_pts_ifc_mm[:, b] -
-                 clip_center[b]) <= clip_half[b])
-            )
-            added = int((shadow & in_sphere & ~red_mask & ~blue_mask).sum())
-            if added > 0:
-                self.get_logger().info(
-                    f'  orange from {e.get("id")} {e.get("name")} '
-                    f'(shape={e.get("shapeType")}): +{added} pts')
-            orange_mask |= shadow & in_sphere
-
-        # 3) On-wall task zone (blue) — selected element's penetration footprint
-        for e in elements:
-            if e.get('id') != selected_id:
-                continue
-            penet = e.get('penetration') or {}
-            c_mm = penet.get('center')
-            if c_mm is None or len(c_mm) != 3:
+                penet = e.get('penetration') or {}
+                pc = penet.get('center')
+                if pc and len(pc) == 3:
+                    blue_mask |= _wall_footprint(
+                        pc, e.get('bbox_min'), e.get('bbox_max')) & in_sphere
                 break
-            p_radius = penet.get('radius')
-            p_length = penet.get('depth_mm')
-            p_sizeX = penet.get('sizeX')
-            p_sizeY = penet.get('sizeY')
-            p_sizeZ = penet.get('sizeZ')
-            is_cyl = p_radius is not None and p_length is not None
-            is_box = p_sizeX is not None and p_sizeY is not None and p_sizeZ is not None
-            if not (is_cyl or is_box):
-                break
-            center_mm = np.array(c_mm, dtype=np.float32)
-            diff = wall_pts_ifc_mm - center_mm
-            if is_cyl:
-                axis = np.array(axis2, dtype=np.float32)
-                along = diff @ axis
-                perp_sq = np.sum(diff * diff, axis=1) - along * along
-                inside = (np.abs(along) <= p_length /
-                          2.0) & (perp_sq <= p_radius * p_radius)
-            else:
-                inside = (
-                    (np.abs(diff[:, 0]) <= p_sizeX / 2.0) &
-                    (np.abs(diff[:, 1]) <= p_sizeY / 2.0) &
-                    (np.abs(diff[:, 2]) <= p_sizeZ / 2.0)
-                )
-            blue_mask |= inside & in_sphere
-            break
 
         # Apply priority red > blue > orange > green, then collapse into one
         # uint8 category per point.
@@ -405,35 +363,6 @@ class TaskRepresenter(Node):
         msg.data = data.tobytes()
         msg.is_dense = True
         self._zones_pub.publish(msg)
-
-    @staticmethod
-    def _element_aabb_mm(e: dict) -> tuple[np.ndarray, np.ndarray] | None:
-        center = e.get('center')
-        if (e.get('sizeX') is not None and e.get('sizeY') is not None
-                and e.get('sizeZ') is not None):
-            if center is None or len(center) != 3:
-                return None
-            half = np.array([
-                e['sizeX'] / 2.0, e['sizeY'] / 2.0, e['sizeZ'] / 2.0,
-            ], dtype=np.float32)
-            return np.array(center, dtype=np.float32), half
-        bmin = e.get('bbox_min')
-        bmax = e.get('bbox_max')
-        if (bmin is not None and bmax is not None
-                and len(bmin) == 3 and len(bmax) == 3):
-            bmin_a = np.array(bmin, dtype=np.float32)
-            bmax_a = np.array(bmax, dtype=np.float32)
-            return (bmin_a + bmax_a) / 2.0, (bmax_a - bmin_a) / 2.0
-        return None
-
-    @staticmethod
-    def _aabb_intersects_sphere(
-            center_mm: np.ndarray, half_mm: np.ndarray,
-            sphere_center_mm: np.ndarray, sphere_r_mm: float) -> bool:
-        closest = np.clip(
-            sphere_center_mm, center_mm - half_mm, center_mm + half_mm)
-        d2 = float(np.sum((closest - sphere_center_mm) ** 2))
-        return d2 <= sphere_r_mm * sphere_r_mm
 
     @staticmethod
     def _pack_rgb(r: int, g: int, b: int) -> float:
