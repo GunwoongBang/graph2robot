@@ -1,97 +1,122 @@
-# Package: robot_gazebo
+# ROBOT_GAZEBO
 
-robot: husky + ur5e
+`robot_gazebo` is the simulation and execution package. It populates the Gazebo world with IFC-derived geometry, spawns and teleports the Husky+UR5e robot to the computed drilling position, and drives MoveIt to plan and execute the arm trajectory to each drill target point.
 
-husky: steering incomplete -> maybe cmd_vel-based control is not appropriate for the robot idk
+The package contains three custom nodes. The launch file also starts `robot_state_publisher`, MoveIt `move_group`, and the `joint_state_broadcaster` / `ur5e_arm_controller` spawners.
 
-world: current surface model -> full ifc world model (done)
+```
+/matrix ──► world_spawner    (IFC models → Gazebo)
 
-## ROS2-Robot overview
-- Clearpath Husky A200: https://docs.clearpathrobotics.com/docs/ros2humble/ros/
-- Universal Robots UR5e: https://docs.ros.org/en/humble/p/ur_description/
-
-### install necessary packages
-- clearpath_control: Controllers for Clearpath Robotics platforms
-```bash
-sudo apt update
-sudo apt install ros-humble-clearpath-control
+/robot/target_position ──► robot_spawner ──► /robot/motion_ready ──► robot_motion_planner
+                                                                            │
+                                          /task/zones ──────────────────────┤ (collision voxels)
+                                          /drilling/context ─────────────────┤ (target wall box)
+                                          /robot/target_point ───────────────┘
+                                                                            │
+                                                              /robot/motion_done
+                                                              /robot/motion_failed
+                                                              /task/drill_caution
 ```
 
-- clearpath_path_description: Clearpath URDF descriptions metapackage
-```bash
-sudo apt update
-sudo apt install ros-humble-clearpath-description
-```
+## Robot
 
-- ur_description: URDF description for Universal Robots
-```bash
-sudo apt update
-sudo apt install ros-humble-ur-description
-```
+**Husky A200** (mobile base) + **UR5e** (6-DOF arm) combined as a single URDF entity `husky_ur5e`. The arm is controlled via `gazebo_ros2_control` with a `FollowJointTrajectory` action served by `ur5e_arm_controller`.
 
-## Robot attach/detach
-using services **SpawnEntity** & **DeleteEntity**
-- To attach a robot
-```bash
-ros2 run gazebo_ros spawn_entity.py -entity husky_ur5e -file install/robot_gazebo/share/robot_gazebo/models/robots/husky_ur5e.urdf -x 0 -y 0 -z 0
-```
-Note: ur5e requires only 2 arguments -> dont really needt to figure it out tho
+- Reach: 850 mm + 150 mm drill tip = **1.0 m working radius**
+- Shoulder height above base: **0.529 m** (`CENTER_Z_OFFSET`)
+- Planning group: `ur5e_arm`, end-effector link: `drill_tip`
 
-- To detach a robot
-```bash
-ros2 service call /delete_entity gazebo_msgs/srv/DeleteEntity "{name: 'husky_ur5e'}" 
-```
+## Nodes
 
-we are going to use these calls to spawn and delete husky5e robot
-+ when a task (mep element) is selected, gazebo receives the information and spawn the robot in the drilling position. 
-+ But the drilling point needs to be designated considering the drilling point and a wall's orientation, idk
+### world_spawner
 
-After creating 
+Reads the IFC-derived Gazebo world file (`models/worlds/ifc_world.sdf`) on startup, extracts every model whose name starts with `Ifc`, and spawns them all into Gazebo at the correct world-frame pose derived from the `/matrix` transform.
 
+Waits for `/matrix` before spawning so the IFC geometry lands exactly where the point cloud scan expects it. Models are spawned sequentially (one callback chain) to avoid flooding the `/spawn_entity` service.
 
+**Topics (subscriber)**
+
+| Topic | Description |
+|---|---|
+| `/matrix` | 4×4 IFC-to-world transform; used once to compute spawn pose from the translation + rotation columns |
+
+**Services (client)**
+
+| Service | Description |
+|---|---|
+| `/spawn_entity` | Gazebo service; called once per IFC model |
 
 ---
-### Phase A — Make MoveIt drive the Gazebo arm (not just the mock).
 
-Right now your URDF's arm <ros2_control> block uses mock_components/GenericSystem (Setup Assistant default). That works for demo.launch.py but in Gazebo the arm won't physically move. Swap to:
+### robot_spawner
 
-```xml
-<plugin>gazebo_ros2_control/GazeboSystem</plugin>
-And add (somewhere in the URDF, top-level <gazebo>):
-```
+Manages the lifecycle of the `husky_ur5e` robot entity in Gazebo. Spawns it at the world origin on startup, then teleports it to the computed drilling position whenever `/robot/target_position` is received. After each successful teleport it broadcasts the updated `base_link` TF and signals the motion planner that the base is at rest.
 
-```xml
-<gazebo>
-  <plugin filename="libgazebo_ros2_control.so" name="gazebo_ros2_control">
-    <parameters>$(find husky_ur5e_moveit_config)/config/ros2_controllers.yaml</parameters>
-  </plugin>
-</gazebo>
-```
-This lets gazebo_ros2_control hand off MoveIt's FollowJointTrajectory goals into the Gazebo physics joints.
+**Robot base position** is given in IFC frame (meters). The node transforms it to world frame via `/matrix`, fixes Z to `FLOOR_HUSKY_Z = -0.405 m`, and computes yaw from the heading vector (`hx`, `hy`) so the robot faces the wall.
 
-### Phase B — One launch file for everything.
+**Topics (subscriber)**
 
-Compose robot_gazebo.launch.py to also start MoveIt's move_group and the controller spawners. Include:
+| Topic | Description |
+|---|---|
+| `/robot_description` | URDF XML; triggers the initial spawn at origin |
+| `/matrix` | 4×4 IFC-to-world transform |
+| `/robot/target_position` | `{target_position: {x, y, z, hx, hy}}` — IFC-frame base pose |
 
-- Gazebo (already there)
-- world_spawner, robot_spawner (already there)
-- move_group.launch.py from husky_ur5e_moveit_config
-- spawn_controllers.launch.py from the moveit config (boots joint_state_broadcaster + ur5e_arm_controller)
+**Topics (publisher)**
 
-Verify by launching once and confirming, in RViz's MotionPlanning panel, that Plan & Execute moves the Gazebo arm (not just the RViz preview).
+| Topic | Description |
+|---|---|
+| `/robot/motion_ready` | `std_msgs/Empty` — published after each successful teleport; triggers `robot_motion_planner` |
 
-### Phase C — Replace the 5-second placeholder with real drilling motion.
+**Services (client)**
 
-Write robot_motion_planner in robot_gazebo:
+| Service | Description |
+|---|---|
+| `/spawn_entity` | Gazebo service; called once on startup |
+| `/gazebo/set_entity_state` | Gazebo service; called on each teleport |
 
-1. Subscribe /robot/target_position (IFC frame) + /matrix → compute cloud-frame drill pose for ur_arm_tool0.
-2. Subscribe /task/filtered_elements + /task/target_wall + /ifc/walls → add the wall and nearby MEPs as CollisionObjects to the planning scene (/planning_scene).
-3. Call MoveIt to plan to the drill pose using MoveItPy (Python API) or the MoveGroupInterface action.
-4. Execute.
-5. Publish a "drill complete" signal that robot_spawner consumes — replacing its 5-second timer.
+---
 
-How to refactor drilling specific logic?
-- in the previous stage they were given color-based status, and those are using in the `motion_planner` to trigger specific robot motions (like speed up, stop, etc.), and there are different motions you can choose like
-  - RED: stop
-  - ORANGE: print warning message, slow down, etc.
-  - BLUE, GREEN: -
+### robot_motion_planner
+
+Plans and executes arm trajectories using MoveIt. Triggered by `/robot/motion_ready` (base has settled). Before planning it builds a MoveIt collision scene from the zone data and the target wall geometry, so the arm avoids on-wall RED-zone obstacles during its approach.
+
+**Startup sequence (per drilling task):**
+
+1. **Orange caution check** — reads `nearby_elements` from `/drilling/context`; publishes a `/task/drill_caution` warning if any far-side (ORANGE) elements are present.
+2. **Collision scene** — constructs two `CollisionObject` entries:
+   - `task_danger_zones`: one 3 cm box voxel per RED-category point from `/task/zones`.
+   - `target_wall`: a single box matching the wall's full bounding box from `/drilling/context`.
+3. **MoveGroup goal** — sends a pose goal to `/move_action` for `drill_tip` at each point in `/robot/target_point`, with a 5 mm position tolerance and ~3° orientation tolerance. Up to 3 planning attempts per point.
+4. **Multi-point sequencing** — after each successful point the arm dwells for `INTER_POINT_DELAY = 5 s` before moving to the next. After the last point it dwells `READY_POSE_DELAY = 5 s` then returns the arm to the named `ready` pose.
+5. **Completion** — publishes `/robot/motion_done` on success, `/robot/motion_failed` (with reason JSON) on exhausted retries.
+
+**Topics (subscriber)**
+
+| Topic | Description |
+|---|---|
+| `/robot/target_point` | `{shape_type, points: [{x,y,z,nx,ny,nz}], wall_id, mep_id}` — drill-tip targets |
+| `/task/zones` | `PointCloud2` with `uint8 category`; RED points become collision voxels |
+| `/drilling/context` | Provides wall bbox for the target-wall collision object and nearby elements for caution check |
+| `/matrix` | 4×4 IFC-to-world transform for coordinate conversion |
+| `/robot/motion_ready` | Triggers planning; ignored if already busy |
+
+**Topics (publisher)**
+
+| Topic | Type | Description |
+|---|---|---|
+| `/robot/motion_done` | `std_msgs/Empty` | Published after all points complete and arm returns to ready |
+| `/robot/motion_failed` | `std_msgs/String` | `{"reason": "..."}` — published after all retries exhausted |
+| `/task/drill_caution` | `std_msgs/String` | `{"orange_caution": bool, "conflicting_element_count": N}` |
+
+**Services (client)**
+
+| Service | Description |
+|---|---|
+| `/apply_planning_scene` | MoveIt service; used to push collision objects before each plan |
+
+**Action (client)**
+
+| Action | Description |
+|---|---|
+| `/move_action` | `moveit_msgs/MoveGroup`; used for both drill-pose goals and the final ready-pose goal |

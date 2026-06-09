@@ -104,8 +104,7 @@ class GraphServer(Node):
             return response
 
         try:
-            layers = query_layers(
-                self.driver, self._query_limit)  # Placeholder
+            layers = query_layers(self.driver, self._query_limit)
         except Exception as exc:
             self.get_logger().error(f'Failed to query layers: {exc}')
             response.success = False

@@ -170,32 +170,73 @@ class RobotMotionPlanner(Node):
         self._busy = True
         self._start_pipeline()
 
-    def _check_orange_caution(self) -> None:
+    def _check_caution(self) -> bool:
+        """Return True if any far-side element lies within the drill depth — robot must stop."""
         if self._drill_context is None:
-            return
-        hazards = self._drill_context.get('hazards', [])
-        for h in hazards:
+            return False
+        nearby = self._drill_context.get('nearby_elements', [])
+        far_side = [e for e in nearby if not e.get('robot_side', True)]
+        if not far_side:
+            self._publish_drill_caution(False, 0)
+            return False
+
+        facing = self._drill_context.get('facing')
+        drill_depth_mm = self._drill_context.get('drill_depth_mm')
+        wall = self._drill_context.get('wall') or {}
+        wall_center_mm = wall.get('center')
+        wall_bmin = wall.get('bbox_min')
+        wall_bmax = wall.get('bbox_max')
+
+        if facing is None or drill_depth_mm is None or wall_center_mm is None:
+            # Geometry unavailable — conservatively treat all far-side elements as conflicts.
+            conflicts = far_side
+        else:
+            f = np.array(facing, dtype=float)
+            ax = int(np.argmax(np.abs(f)))
+            if wall_bmin and wall_bmax:
+                half_t = (float(wall_bmax[ax]) - float(wall_bmin[ax])) / 2.0
+            else:
+                half_t = float(self._drill_context.get(
+                    'wall_thickness_mm', 0)) / 2.0
+            # Robot-side wall face in IFC mm.
+            robot_face = np.array(wall_center_mm, dtype=float) - f * half_t
+            conflicts = []
+            for e in far_side:
+                c = e.get('center')
+                if c is None or len(c) != 3:
+                    conflicts.append(e)
+                    continue
+                depth = float(np.dot(np.array(c, dtype=float) - robot_face, f))
+                if depth < float(drill_depth_mm):
+                    conflicts.append(e)
+
+        for e in conflicts:
             self.get_logger().warn(
-                f'Depth conflict: element {h.get("id")} ({h.get("name", "")}) '
-                f'at depth {h.get("depth_mm")} mm is within drill range.')
-        self._publish_drill_caution(len(hazards) > 0, len(hazards))
+                f'Depth conflict: element {e.get("id")} ({e.get("name", "")}) '
+                f'is within drill depth ({drill_depth_mm} mm).')
+        self._publish_drill_caution(len(conflicts) > 0, len(conflicts))
+        return len(conflicts) > 0
 
     def _publish_drill_caution(self, has_caution: bool, conflict_count: int) -> None:
-        payload = {'orange_caution': has_caution,
+        """Published-but-unread signals"""
+        payload = {'has_caution': has_caution,
                    'conflicting_element_count': conflict_count}
         msg = String()
         msg.data = json.dumps(payload)
         self._drill_caution_pub.publish(msg)
         if has_caution:
             self.get_logger().warn(
-                f'Drill caution: {conflict_count} hidden element(s) within drill depth. '
-                'Proceeding — limit drill depth to wall thickness.')
+                f'Drill caution: {conflict_count} hidden element(s) within drill depth — stopping.')
         else:
             self.get_logger().info(
-                f'No drill caution: {conflict_count} element(s) deeper than drill range.')
+                'No drill caution: no hidden elements within drill depth.')
 
     def _start_pipeline(self) -> None:
-        self._check_orange_caution()
+        if self._check_caution():
+            self._publish_motion_failed(
+                'caution: hidden element within drill depth')
+            self._busy = False
+            return
         collision_objects: list[CollisionObject] = []
         co = self._build_danger_collision_object()
         if co is not None:
@@ -564,6 +605,7 @@ class RobotMotionPlanner(Node):
         self.get_logger().info('Published /robot/motion_done.')
 
     def _publish_motion_failed(self, reason: str) -> None:
+        """Published-but-unread signals"""
         msg = String()
         msg.data = json.dumps({'reason': reason})
         self._failed_pub.publish(msg)

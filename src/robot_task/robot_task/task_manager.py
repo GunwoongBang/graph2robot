@@ -57,8 +57,7 @@ class TaskManager(Node):
             (self._space_cli, self._on_spaces, '/graph/list_spaces'),
             (self._wall_cli, self._on_walls, '/graph/list_walls'),
             (self._layer_cli, self._on_layers, '/graph/list_layers'),
-            (self._mep_cli, self._on_mep_elements,
-             '/graph/list_mep_elements'),
+            (self._mep_cli, self._on_mep_elements, '/graph/list_mep_elements'),
         ]:
             if not cli.wait_for_service(timeout_sec=wait_timeout_sec):
                 self.get_logger().error(

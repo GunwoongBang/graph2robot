@@ -1,68 +1,190 @@
-tools/generate_transform.py -> run script to generate a transformation matrix
-tools/visualize_alignment.py -> check the alignment visually
-run task_publisher node to publish a topic
-topic is an MEP element, retrieved from the Neo4j graph database and the position is transformed with the transformation matrix
+# ROBOT_TASK
 
+`robot_task` is a package responsible for transforming BIM graph data into executable robot tasks. It bridges the Neo4j graph database (via `robot_graph`) and the robot execution layer, computing where the robot should stand, which direction it should face, and which points on the wall it should drill.
 
-In this package there are (currently) two nodes:
-- task_publisher: publishes a target task (mep element) as a topic
-- matrix_publisher: publishes the transformation matrix as a topic
+The package is structured as a pipeline of three nodes launched together:
 
-Launch file binds the two nodes and deploy them together
+![image](../../images/robot_task.png)
+
+When a user clicks an MEP element in RViz, `task_distributor` publishes `/task/selected_element`. `drill_context_builder` then assembles the full drill context — target wall, layer stack, facing direction, and nearby MEP elements — and publishes it on `/drilling/context`. `drill_executor` consumes the context and publishes the robot base position and drill-tip target point(s).
+
+## Topic schema
+
+All topics carry JSON-encoded `std_msgs/String` messages. `/ifc/*` topics use TRANSIENT_LOCAL (latched) QoS so late-joining subscribers receive the last value immediately.
+
+### `/drilling/elements`
+Published once on startup after the graph is loaded. Lists every MEP element that penetrates a wall and is therefore a candidate drilling task.
+
+```json
+{
+  "count": 12,
+  "elements": [
+    {
+      "id": "1iDZV_Brn0Z9GW0EFhIn_p",
+      "name": "Pipe Types:Default:1208035",
+      "center": [1322.0, 3283.49, 900.0],
+      "bbox_min": [1305.3, 3246.0, 883.3],
+      "bbox_max": [1338.7, 3354.0, 916.7],
+      "shapeType": "cylindrical",
+      "wall_id": "3S3VgMDFLDiPHeIJPk5HIn",
+      "space_id": "<hosting_space_id>",
+      "penetration": {
+        "center": [1322.0, 3300.0, 900.0],
+        "depth_mm": 108.0,
+        "radius": 16.7,
+        "sizeX": null, "sizeY": null, "sizeZ": null
+      }
+    }
+  ]
+}
+```
+
+### `/drilling/context`
+Published each time a new element is selected. Contains everything needed for robot positioning and motion planning.
+
+```json
+{
+  "element": {
+    "id": "...", "name": "...", "center": [...],
+    "bbox_min": [...], "bbox_max": [...], "shapeType": "cylindrical"
+  },
+  "facing": [0.0, -1.0, 0.0],
+  "penetration": {
+    "center": [1322.0, 3300.0, 900.0], "depth_mm": 108.0, "radius": 16.7,
+    "sizeX": null, "sizeY": null, "sizeZ": null
+  },
+  "wall": {
+    "id": "...", "axis2": [0.0, 1.0, 0.0], "directionSense": "NEGATIVE",
+    "center": [...], "bbox_min": [...], "bbox_max": [...]
+  },
+  "layers": [
+    {"id": "...", "name": "Gypsum", "order": 0, "thickness_mm": 12.5}
+  ],
+  "wall_thickness_mm": 90.0,
+  "drill_depth_mm": 108.0,
+  "robot_space_id": "<space_id_where_robot_stands>",
+  "nearby_elements": [
+    {
+      "id": "...", "name": "...", "center": [...],
+      "bbox_min": [...], "bbox_max": [...],
+      "robot_side": false
+    }
+  ]
+}
+```
+
+`facing` is a unit vector pointing **from the robot toward the wall**. `nearby_elements` lists all MEP elements hosted in spaces that bound the target wall, excluding the selected element itself. `robot_side: true` means the element is in the same space as the robot (RED zone in RViz); `robot_side: false` means it is behind the wall (ORANGE zone).
+
+### `/robot/target_position`
+Robot base position in IFC frame (meters), published by `drill_executor`.
+
+```json
+{
+  "count": 1,
+  "target_position": {"x": 1.322, "y": 4.200, "z": 0.0, "hx": 0.0, "hy": -1.0}
+}
+```
+
+`hx`/`hy` is the heading direction (same as `facing` XY components), used to orient the robot base toward the wall.
+
+### `/robot/target_point`
+Drill-tip target point(s) in IFC frame (meters), published by `drill_executor`. Cylindrical elements produce one point; rectangular elements produce four corner points.
+
+```json
+{
+  "shape_type": "cylindrical",
+  "wall_id": "...",
+  "mep_id": "...",
+  "points": [
+    {"x": 1.322, "y": 3.246, "z": 0.900, "nx": 0.0, "ny": -1.0, "nz": 0.0}
+  ]
+}
+```
+
+`nx`/`ny`/`nz` is the wall normal direction the drill tip must face (same as `facing`).
+
+## Nodes
+
+### task_manager
+
+Pulls BIM data from `graph_server` on startup and distributes it to the rest of the pipeline. Also loads the IFC-to-world transform matrix from a YAML file and publishes it once.
+
+On startup it calls all four `/graph/list_*` services, wraps each response in a `{count, <entity_key>: [...]}` envelope, and publishes on the corresponding `/ifc/*` topic. All `/ifc/*` and `/matrix` topics are latched so nodes that start later still receive the data.
+
+**Services (client)**
+
+| Service | Description |
+|---|---|
+| `/graph/list_spaces` | Rooms and MEP corridors with wall-boundary and hosted-MEP relationships |
+| `/graph/list_walls` | Walls with layer stack and MEP penetration geometry |
+| `/graph/list_layers` | Material layers with thickness and stacking order |
+| `/graph/list_mep_elements` | MEP elements with center, bbox, and shape type |
+
+**Topics (publisher)**
+
+| Topic | Type | Description |
+|---|---|---|
+| `/ifc/spaces` | `std_msgs/String` | Latched; `{count, spaces: [...]}` |
+| `/ifc/walls` | `std_msgs/String` | Latched; `{count, walls: [...]}` |
+| `/ifc/layers` | `std_msgs/String` | Latched; `{count, layers: [...]}` |
+| `/ifc/mep_elements` | `std_msgs/String` | Latched; `{count, mep_elements: [...]}` |
+| `/matrix` | `std_msgs/String` | Latched; `{count: 1, matrix: [[4×4]]}` |
+
+The transform matrix maps IFC coordinates (mm, right-hand Y-up) to the point-cloud world frame (m). It is loaded from `config/transform_matrix.yaml`.
 
 ---
-task_generator
-- it receives the /task/selected_task topic containing the element id
-- computes the drilling position considering the drilling point
-- to compute it, what is required?
-    - drilling point (already have as "center")
-    - wall's normal direction (maybe we can utilize the attribute "side")
-    - z position (can be extracted from the transformation matrix maybe and there is the /matrix task that we can make use of)
-- so finally the node `task_generator` publishes a topic called `/drilling_position` that contains (x, y, z) where the robot should be located when a task is clicked
 
-The current `target_position` (renamed from `drilling_position`) has a limitation that when a user clicked on a unverified element as a task, the roobt is spawned in a wrong position, leading the robot stuck in a wall. This is mainly because the robot's position as well as the orientation depend on the target wall's face but it is too comlicated to rely solely on it, especially when it comes to a wall with mep elements on both side.
--> Try to connect the position with its spacial location. Need to know which room the target mep element is lying in and set the drilling position according to its spacial containment. Luckily we have all the infomration required for this implementation :)
+### drill_context_builder
 
-Schritt fuer Schritt
-1. first, retrieve the center point (done already) (DONE)
-2. graph_client asks for wall information to graph_server (DONE)
-3. from the graph_server, we are receiving a wall information including axis2 which is a denominator of in which direction the wall is lying (DONE)
-4. task_generator now calculates the drilling position with the attributes "center" from /task/selected_task, and "axis2" from /walls (info collected, calculation ready)
-    - But when it comes to the heading, mep_elements' face is not reliable since, they are not consistent. So try using wall's axis and directionSense to determine the exact position
+Maintains in-memory indexes of all IFC entities and reacts to element selection events. Produces two outputs: a static list of all drillable elements (`/drilling/elements`) and a per-selection full context (`/drilling/context`).
 
-### Task representation
-1. first, from the robot urdf file, it calculates the furthrest reachable area (working_area) and creates a virtual sphere -> are we going to create a task node in neo4j and attach/detach it throughout the pipeline?
-2. then the robot inspects the potential mep elements that should consider before the task execution
-    - but how? using the topology with the bim graph maybe...
-3. the points outside of the spherical area && the target wall are excluded
-4. remaining points are color-coded
-    - task: blue (filter with the bbox)
-    - danger zone: red (when there is an mep element behind the wall)
+**Index building** — when all four `/ifc/*` topics have been received, the node rebuilds lookup dicts (`wall_id → wall`, `space_id → space`, `mep_id → mep`, `mep_id → penetration_rel`) and publishes `/drilling/elements`.
+
+**Context building** — on each `/task/selected_element` message the node:
+1. Looks up the MEP element and its wall penetration relationship.
+2. Determines `facing` (unit vector from robot toward wall) using the wall's `axis2`, `directionSense`, and the hosting space's `bounded_by` side attribute.
+3. For **cylindrical** elements (pipes): flips the facing so the robot approaches from the habitable side (opposite the MEP service space).
+4. Identifies `robot_space_id` (the space where the robot will stand) and collects `nearby_elements` from all spaces that bound the target wall, tagging each with `robot_side`.
+5. Orders wall layers from the robot's approach direction and sums their thicknesses.
+
+**Topics (subscriber)**
+
+| Topic | Description |
+|---|---|
+| `/ifc/walls` | Wall geometry and relationships |
+| `/ifc/spaces` | Space-wall boundaries and hosted MEP elements |
+| `/ifc/layers` | Material layer attributes |
+| `/ifc/mep_elements` | MEP element geometry |
+| `/task/selected_element` | `{"id": "<mep_global_id>"}` — triggers context build |
+
+**Topics (publisher)**
+
+| Topic | Description |
+|---|---|
+| `/drilling/elements` | All drillable MEP elements with penetration geometry |
+| `/drilling/context` | Full drill context for the currently selected element |
+
 ---
-**I think we should have a task node per robot that can be attached and detached to a task (can be mep element, wall, etc.)**
-- the task node contains
-    - target position (where a robot spawns) -> rename `/drilling_position` to `/target_position`
-    - robot working area (sphere)
-    - affordances
-- when a task is clicked, the task node is connected with the target node during the execution then disconnected
 
-`task_representer` subscribes data (`/selected_element`, `/mep_elements` and `/target_position`) and serve a service
-After receiving a request from `task_distributor`, it creates a virtual sphere with a radius (800mm: ur5e, may differ with different robots)
-and a center of the sphere. then `task_distributer` gets the sphere and filter the points (`/cloud`) out by calculating the intersecting area (the wall points that are inside the sphere). and then it translates the points' position with `/matrix` and publishes the points with blue color in rviz2.
+### drill_executor
 
-### Task evaluator
-`task_evaluator` receives the topic `/ifc/mep_elements` and `/task/selected_element`
-From the selected_element, it gets the target wall (on which the drilling is performed) and [method, idk yet]. Finally, it creates a list of mep_elements on a topic `/task/filtered_elements` and also publishes a topic `/task/target_wall` so the `task_representer` does not have to check which wall it should work on.
+Consumes `/drilling/context` and computes the concrete robot pose and drill target(s).
 
-#### With `task_evaluator`
-we'd like to know what mep element we should consider before performing an actual task to remove all the potential jeopardies
-for example, when it comes to drilling, it is really important not to damage other elements which are not visible from human's side
-to do so, `task_evaluator` creates a list of elements that should be taken into consideration using topological information of ifc model
-What Topology then??
-there is a target wall and the wall consists of space(s). Then we inspect all the spaces if they host any mep elements. If they have, we register them in the list 
+**Robot base position** — the robot stands at `penetration_center - facing * offset` in the XY plane (Z fixed to floor). The standoff offset is 0.9 m when the penetration is below shoulder height (529 mm), 0.6 m otherwise. The heading is set to `facing` so the robot faces the wall.
 
+**Drill target point(s)**:
+- *Cylindrical*: one point projected onto the near wall face along `facing`, at the pipe's centreline height.
+- *Rectangular*: four corner points of the fixture's bounding rectangle on the wall surface, in counterclockwise order when viewed from the robot side.
 
-There are three showcases
-1. Drilling a hole for IfcFlowSegment
-2. Drilling holes for IfcBuildingElementProxy (Receptacle)
-3. Drilling a hole in at a random point
+**Topics (subscriber)**
+
+| Topic | Description |
+|---|---|
+| `/drilling/context` | Full drill context including facing and penetration geometry |
+
+**Topics (publisher)**
+
+| Topic | Description |
+|---|---|
+| `/robot/target_position` | Robot base pose in IFC frame (meters) |
+| `/robot/target_point` | Drill-tip target point(s) with surface normal |
