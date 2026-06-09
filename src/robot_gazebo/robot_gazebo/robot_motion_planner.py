@@ -20,6 +20,7 @@ from moveit_msgs.msg import (
     BoundingVolume,
     CollisionObject,
     Constraints,
+    JointConstraint,
     MotionPlanRequest,
     OrientationConstraint,
     PlanningScene,
@@ -36,6 +37,19 @@ VOXEL_SIZE = 0.03            # 3 cm box per RED/ORANGE point
 DRILL_STANDOFF = 0.005       # 5 mm gap between drill_tip and wall surface,
 MAX_PLAN_ATTEMPTS = 3
 PLAN_TIME = 5.0              # seconds per plan attempt
+INTER_POINT_DELAY = 5.0      # dwell time between consecutive drill points (s)
+READY_POSE_DELAY = 5.0       # dwell time between last point and 'ready' state
+JOINT_TOLERANCE = 0.01       # ~0.6 deg tolerance for ready-pose joints
+
+# "ready" group state from husky_ur5e.srdf
+READY_JOINTS: dict[str, float] = {
+    'ur_arm_shoulder_pan_joint':  0.0,
+    'ur_arm_shoulder_lift_joint': -1.5708,
+    'ur_arm_elbow_joint':          1.5708,
+    'ur_arm_wrist_1_joint': -1.5708,
+    'ur_arm_wrist_2_joint': -1.5708,
+    'ur_arm_wrist_3_joint':        0.0,
+}
 POS_TOLERANCE = 0.005        # 5 mm position tolerance at the drill tip
 ORI_TOLERANCE = 0.05         # ~3 deg per-axis tolerance
 
@@ -47,13 +61,11 @@ class RobotMotionPlanner(Node):
     def __init__(self) -> None:
         super().__init__('robot_motion_planner')
 
-        # === Service servers and clients ===
         # Clients
         self._move_group_cli = ActionClient(self, MoveGroup, '/move_action')
         self._scene_cli = self.create_client(
             ApplyPlanningScene, '/apply_planning_scene')
 
-        # === Topic publishers and subscribers ===
         latched_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.RELIABLE,
@@ -71,6 +83,8 @@ class RobotMotionPlanner(Node):
             Empty, '/robot/motion_done', volatile_qos)
         self._failed_pub = self.create_publisher(
             String, '/robot/motion_failed', volatile_qos)
+        self._drill_caution_pub = self.create_publisher(
+            String, '/task/drill_caution', latched_qos)
         # Subscribers
         self.create_subscription(
             String, '/robot/target_point', self._on_target_point, latched_qos)
@@ -79,18 +93,17 @@ class RobotMotionPlanner(Node):
         self.create_subscription(
             String, '/matrix', self._on_matrix, latched_qos)
         self.create_subscription(
-            String, '/ifc/walls', self._on_walls, latched_qos)
-        self.create_subscription(
-            String, '/task/target_wall', self._on_target_wall, latched_qos)
-        self.create_subscription(
             Empty, '/robot/motion_ready', self._on_motion_ready, volatile_qos)
+        self.create_subscription(
+            String, '/drilling/context', self._on_drill_context, latched_qos)
 
-        self._target_point: dict | None = None
+        self._pending_points: list[dict] | None = None
+        self._shape_type: str | None = None
         self._zones_msg: PointCloud2 | None = None
         self._matrix: np.ndarray | None = None
-        self._walls: list[dict] | None = None
-        self._target_wall_id: str | None = None
+        self._drill_context: dict | None = None
         self._busy = False
+        self._advance_timer = None
 
     def _on_target_point(self, msg: String) -> None:
         try:
@@ -99,41 +112,33 @@ class RobotMotionPlanner(Node):
             self.get_logger().error(
                 f'Invalid /robot/target_point JSON: {exc}')
             return
-        self._target_point = payload.get('target_point')
-        if self._target_point is None:
+        points = payload.get('points')
+        if not points:
             self.get_logger().warn(
-                '/robot/target_point had no "target_point" field.')
+                '/robot/target_point had no "points" list.')
             return
+        self._pending_points = list(points)
+        self._shape_type = payload.get('shape_type', 'cylindrical')
         self.get_logger().info(
-            f"Got target_point mep_id={self._target_point.get('mep_id')} "
-            f"wall_id={self._target_point.get('wall_id')}.")
+            f"Got target_point: shape={self._shape_type}, "
+            f"{len(self._pending_points)} point(s), "
+            f"mep_id={payload.get('mep_id')} wall_id={payload.get('wall_id')}.")
 
     def _on_zones(self, msg: PointCloud2) -> None:
         self._zones_msg = msg
         self.get_logger().info(
             f'Got /task/zones: {msg.width} points.')
 
-    def _on_walls(self, msg: String) -> None:
+    def _on_drill_context(self, msg: String) -> None:
         try:
-            payload = json.loads(msg.data)
+            self._drill_context = json.loads(msg.data)
         except json.JSONDecodeError as exc:
-            self.get_logger().error(f'Invalid /ifc/walls JSON: {exc}')
+            self.get_logger().error(f'Invalid /drilling/context JSON: {exc}')
             return
-        self._walls = payload.get('walls', [])
+        mep_id = (self._drill_context.get('element') or {}).get('id', '')
+        wall_id = (self._drill_context.get('wall') or {}).get('id', '')
         self.get_logger().info(
-            f'Got /ifc/walls: {len(self._walls)} walls.')
-
-    def _on_target_wall(self, msg: String) -> None:
-        try:
-            payload = json.loads(msg.data)
-        except json.JSONDecodeError as exc:
-            self.get_logger().error(
-                f'Invalid /task/target_wall JSON: {exc}')
-            return
-        self._target_wall_id = payload.get('wall_id')
-        if self._target_wall_id:
-            self.get_logger().info(
-                f'Got /task/target_wall: {self._target_wall_id}.')
+            f'Got /drilling/context: mep={mep_id} wall={wall_id}.')
 
     def _on_matrix(self, msg: String) -> None:
         try:
@@ -154,7 +159,7 @@ class RobotMotionPlanner(Node):
                 'Already executing motion; ignoring /robot/motion_ready.')
             return
         missing = []
-        if self._target_point is None:
+        if not self._pending_points:
             missing.append('target_point')
         if self._matrix is None:
             missing.append('matrix')
@@ -165,7 +170,73 @@ class RobotMotionPlanner(Node):
         self._busy = True
         self._start_pipeline()
 
+    def _check_caution(self) -> bool:
+        """Return True if any far-side element lies within the drill depth — robot must stop."""
+        if self._drill_context is None:
+            return False
+        nearby = self._drill_context.get('nearby_elements', [])
+        far_side = [e for e in nearby if not e.get('robot_side', True)]
+        if not far_side:
+            self._publish_drill_caution(False, 0)
+            return False
+
+        facing = self._drill_context.get('facing')
+        drill_depth_mm = self._drill_context.get('drill_depth_mm')
+        wall = self._drill_context.get('wall') or {}
+        wall_center_mm = wall.get('center')
+        wall_bmin = wall.get('bbox_min')
+        wall_bmax = wall.get('bbox_max')
+
+        if facing is None or drill_depth_mm is None or wall_center_mm is None:
+            # Geometry unavailable — conservatively treat all far-side elements as conflicts.
+            conflicts = far_side
+        else:
+            f = np.array(facing, dtype=float)
+            ax = int(np.argmax(np.abs(f)))
+            if wall_bmin and wall_bmax:
+                half_t = (float(wall_bmax[ax]) - float(wall_bmin[ax])) / 2.0
+            else:
+                half_t = float(self._drill_context.get(
+                    'wall_thickness_mm', 0)) / 2.0
+            # Robot-side wall face in IFC mm.
+            robot_face = np.array(wall_center_mm, dtype=float) - f * half_t
+            conflicts = []
+            for e in far_side:
+                c = e.get('center')
+                if c is None or len(c) != 3:
+                    conflicts.append(e)
+                    continue
+                depth = float(np.dot(np.array(c, dtype=float) - robot_face, f))
+                if depth < float(drill_depth_mm):
+                    conflicts.append(e)
+
+        for e in conflicts:
+            self.get_logger().warn(
+                f'Depth conflict: element {e.get("id")} ({e.get("name", "")}) '
+                f'is within drill depth ({drill_depth_mm} mm).')
+        self._publish_drill_caution(len(conflicts) > 0, len(conflicts))
+        return len(conflicts) > 0
+
+    def _publish_drill_caution(self, has_caution: bool, conflict_count: int) -> None:
+        """Published-but-unread signals"""
+        payload = {'has_caution': has_caution,
+                   'conflicting_element_count': conflict_count}
+        msg = String()
+        msg.data = json.dumps(payload)
+        self._drill_caution_pub.publish(msg)
+        if has_caution:
+            self.get_logger().warn(
+                f'Drill caution: {conflict_count} hidden element(s) within drill depth — stopping.')
+        else:
+            self.get_logger().info(
+                'No drill caution: no hidden elements within drill depth.')
+
     def _start_pipeline(self) -> None:
+        if self._check_caution():
+            self._publish_motion_failed(
+                'caution: hidden element within drill depth')
+            self._busy = False
+            return
         collision_objects: list[CollisionObject] = []
         co = self._build_danger_collision_object()
         if co is not None:
@@ -237,29 +308,12 @@ class RobotMotionPlanner(Node):
         return co
 
     def _build_target_wall_collision_object(self) -> CollisionObject | None:
-        """Build an axis-aligned box CollisionObject for the target wall.
-
-        Uses the wall's center + (bbox_max - bbox_min) from /ifc/walls, then
-        transforms IFC mm -> world m via the cached /matrix. The IFC bbox is
-        already axis-aligned in the IFC frame; for axis-aligned BIMs this
-        survives the (typically rigid) IFC->world rotation as an axis-aligned
-        box; for arbitrary rotations the box would be slightly conservative.
-        """
-        if not self._target_wall_id:
+        if self._drill_context is None:
             self.get_logger().warn(
-                'No /task/target_wall yet; planning without target wall.')
+                'No /drilling/context yet; planning without target wall.')
             return None
-        if not self._walls:
-            self.get_logger().warn(
-                'No /ifc/walls cached; planning without target wall.')
-            return None
-        wall = next(
-            (w for w in self._walls if w.get('id') == self._target_wall_id),
-            None)
-        if wall is None:
-            self.get_logger().warn(
-                f'Target wall {self._target_wall_id} not in /ifc/walls cache.')
-            return None
+        wall = self._drill_context.get('wall') or {}
+        wall_id = wall.get('id')
         center_mm = wall.get('center')
         bmin_mm = wall.get('bbox_min')
         bmax_mm = wall.get('bbox_max')
@@ -267,7 +321,7 @@ class RobotMotionPlanner(Node):
                 or bmin_mm is None or len(bmin_mm) != 3
                 or bmax_mm is None or len(bmax_mm) != 3):
             self.get_logger().warn(
-                f'Target wall {self._target_wall_id} missing center/bbox.')
+                f'Target wall {wall_id} missing center/bbox in context.')
             return None
 
         # IFC mm -> world m via the cached matrix.
@@ -299,17 +353,16 @@ class RobotMotionPlanner(Node):
         pose.orientation.w = 1.0
         co.primitive_poses.append(pose)
         self.get_logger().info(
-            f'Built target_wall CollisionObject id={self._target_wall_id} '
+            f'Built target_wall CollisionObject id={wall_id} '
             f'size=({size_m[0]:.3f}, {size_m[1]:.3f}, {size_m[2]:.3f}) m '
             f'at pos=({pose.position.x:.3f}, {pose.position.y:.3f}, '
             f'{pose.position.z:.3f}).')
         return co
 
-    def _compute_world_goal_pose(self) -> PoseStamped:
-        """Transform /robot/target_point (IFC frame, meters) into a world-frame
-        PoseStamped for drill_tip. The drill_tip's local z-axis is aligned
-        with the published normal (axis pointing INTO the wall)."""
-        tp = self._target_point or {}
+    def _compute_world_goal_pose(self, tp: dict) -> PoseStamped:
+        """Transform a point from /robot/target_point (IFC frame, meters) into
+        a world-frame PoseStamped for drill_tip. The drill_tip local z-axis
+        aligns with the normal (pointing INTO the wall)."""
         ifc_pos = np.array([
             float(tp.get('x', 0.0)),
             float(tp.get('y', 0.0)),
@@ -368,7 +421,7 @@ class RobotMotionPlanner(Node):
                 '/move_action action server unavailable.')
             self._publish_motion_failed('move_action unavailable')
             return
-        goal_pose = self._compute_world_goal_pose()
+        goal_pose = self._compute_world_goal_pose(self._pending_points[0])
         constraints = self._build_pose_constraints(goal_pose)
         req = MotionPlanRequest()
         req.group_name = PLANNING_GROUP
@@ -446,13 +499,97 @@ class RobotMotionPlanner(Node):
         if result.error_code.val == 1:
             self.get_logger().info(
                 f'Plan + execute SUCCESS (attempt {attempt}).')
-            self._publish_motion_done()
-            self._busy = False
+            self._pending_points.pop(0)
+            if self._pending_points:
+                remaining = len(self._pending_points)
+                self.get_logger().info(
+                    f'{remaining} point(s) remaining; '
+                    f'advancing in {INTER_POINT_DELAY:.0f}s.')
+                self._advance_timer = self.create_timer(
+                    INTER_POINT_DELAY, self._on_advance_timer)
+            else:
+                self.get_logger().info(
+                    f'All points done; returning to ready in {READY_POSE_DELAY:.0f}s.')
+                self._advance_timer = self.create_timer(
+                    READY_POSE_DELAY, self._on_ready_timer)
             return
         self.get_logger().warn(
             f'Plan/execute failed (attempt {attempt}); '
             f'error_code={result.error_code.val}.')
         self._maybe_retry(attempt)
+
+    def _return_to_ready(self) -> None:
+        if not self._move_group_cli.wait_for_server(timeout_sec=10.0):
+            self.get_logger().error(
+                '/move_action unavailable; publishing done without ready pose.')
+            self._publish_motion_done()
+            self._busy = False
+            return
+        constraints = Constraints()
+        constraints.name = 'ready_pose'
+        for joint_name, value in READY_JOINTS.items():
+            jc = JointConstraint()
+            jc.joint_name = joint_name
+            jc.position = value
+            jc.tolerance_above = JOINT_TOLERANCE
+            jc.tolerance_below = JOINT_TOLERANCE
+            jc.weight = 1.0
+            constraints.joint_constraints.append(jc)
+        req = MotionPlanRequest()
+        req.group_name = PLANNING_GROUP
+        req.num_planning_attempts = 5
+        req.allowed_planning_time = PLAN_TIME
+        req.max_velocity_scaling_factor = 0.3
+        req.max_acceleration_scaling_factor = 0.3
+        req.goal_constraints = [constraints]
+        goal = MoveGroup.Goal()
+        goal.request = req
+        self.get_logger().info('Sending ready-pose goal.')
+        fut = self._move_group_cli.send_goal_async(goal)
+        fut.add_done_callback(self._after_ready_accepted)
+
+    def _after_ready_accepted(self, future) -> None:
+        try:
+            handle = future.result()
+        except Exception as exc:
+            self.get_logger().error(f'ready-pose send_goal raised: {exc}')
+            self._publish_motion_done()
+            self._busy = False
+            return
+        if handle is None or not handle.accepted:
+            self.get_logger().warn('Ready-pose goal rejected; publishing done anyway.')
+            self._publish_motion_done()
+            self._busy = False
+            return
+        handle.get_result_async().add_done_callback(self._after_ready_result)
+
+    def _after_ready_result(self, future) -> None:
+        try:
+            wrapped = future.result()
+            if wrapped.result.error_code.val == 1:
+                self.get_logger().info('Returned to ready pose.')
+            else:
+                self.get_logger().warn(
+                    f'Ready-pose plan failed (code={wrapped.result.error_code.val}); '
+                    'publishing done anyway.')
+        except Exception as exc:
+            self.get_logger().error(f'ready-pose result raised: {exc}')
+        self._publish_motion_done()
+        self._busy = False
+
+    def _on_ready_timer(self) -> None:
+        if self._advance_timer is not None:
+            self._advance_timer.cancel()
+            self._advance_timer = None
+        self.get_logger().info('Dwell done; returning to ready pose.')
+        self._return_to_ready()
+
+    def _on_advance_timer(self) -> None:
+        if self._advance_timer is not None:
+            self._advance_timer.cancel()
+            self._advance_timer = None
+        self.get_logger().info('Dwell done; sending goal for next point.')
+        self._send_goal(attempt=1)
 
     def _maybe_retry(self, attempt: int) -> None:
         if attempt >= MAX_PLAN_ATTEMPTS:
@@ -468,6 +605,7 @@ class RobotMotionPlanner(Node):
         self.get_logger().info('Published /robot/motion_done.')
 
     def _publish_motion_failed(self, reason: str) -> None:
+        """Published-but-unread signals"""
         msg = String()
         msg.data = json.dumps({'reason': reason})
         self._failed_pub.publish(msg)

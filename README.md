@@ -1,62 +1,106 @@
-# `robot_graph`
-`robot_graph` is a package that talks with Neo4j graph database where the BIM-derived graph is stored. It is responsible for retrieving and updating the graph
+# pcd2scenegraph
 
-# `robot_task`
-`robot_task` is a package that ...
+A ROS 2 (Humble) system that turns a BIM model stored in Neo4j into executable robot drilling tasks. A Husky+UR5e robot is placed automatically in front of a selected MEP element, a working-zone hazard map is computed on the target wall, and MoveIt plans and executes the arm trajectory to each drill point.
 
-# `robot_rviz`
-`robot_rviz` is a package that ...
+## System overview
 
-# `robot_gazebo`
-`robot_gazebo` is a package that ...
+```
+Neo4j ──(services)──► robot_graph
+                           │
+                      /ifc/* topics
+                           │
+                      robot_task ──► /drilling/elements ──► robot_rviz
+                           │                                     │
+                      /drilling/context                  /task/selected_element
+                           │                                     │
+                      /robot/target_position ──► robot_gazebo ◄──┘
+                      /robot/target_point ───────────►    │
+                                                     /task/zones ──► MoveIt
+```
 
+## Packages
 
+### [robot_graph](src/robot_graph/README.md)
 
-Neo4j graph database
-->
-robot_graph
-->
-robot_task
-->
-robot_rviz and robot_gazebo
+Connects to Neo4j and exposes the BIM model as ROS 2 services. Each service returns a JSON array of IFC entities following a common `{id, type, attributes, relationship[]}` schema.
 
+| Node | Role |
+|---|---|
+| `graph_server` | Serves `/graph/list_spaces`, `/graph/list_walls`, `/graph/list_layers`, `/graph/list_mep_elements` |
 
+---
 
-### Next step
-ok now we are going to place the drilling tip at the point on the wall surface where a hole should be placed. but i think we dont have to do the motion planning manually how should it be performed?
+### [robot_task](src/robot_task/README.md)
 
-the robot drill tip is approaching to the target_point on the wall
+Transforms raw BIM data into executable task parameters: which wall to drill, which direction the robot faces, in what order the layers are encountered, and what points the drill tip must reach.
 
-before doing the motion planning, id like to make robot_task publish target point first
-target point is a point where the robot drilling tip should be located. it is on a wall and it also contains wall target depth, thickness, layer info. 
+| Node | Role |
+|---|---|
+| `task_manager` | Calls graph services on startup; publishes `/ifc/*` topics and `/matrix` |
+| `drill_context_builder` | Builds per-selection drill context (facing, layers, nearby elements) on `/drilling/context` |
+| `drill_executor` | Computes robot base pose (`/robot/target_position`) and drill-tip target points (`/robot/target_point`) |
 
-To do so, robot_graph should publish the elements first and then robot_client redistribute them to robot_task, the point is how to combine them and what to you to process the target_point
+---
 
-Then how do i get the surface information of the mep element cause we are only dealing with the point cloud which is of all the surface elements of the space -> should we replace the way of presenting the mep element?
+### [robot_rviz](src/robot_rviz/README.md)
 
-### Next step
-So the motion planning has been covered somehow. But there are still some tasks left.
-1. We are dealing not only with pipes but receptacles or light switches. But they have a different mechanisms with robot-pipe operation because pipe only requires one big hole drilling in the center, while those elements need 4 holes in its each corner. 
-    - Then how can I encode the task information in each mep element?
-    - To do so, the orientation of robot should be changed because the current robot position is too close to wall to work with the lower receptacles
-2. Wall information is still missing. It does not need to be exhibited during the robot operation but it is required.
-    - Then what kind of information is needed
-        + Wall thickness
-        + drilling depth
-        + layer info.
-    - How you want to show it?
-        + in the terminal --> so that it can be later shown in a customized UI
-3. The whole structure needs to be modularized
-    - Current graph query rule is messed up need to set a strict query rule 
-    - Current modules connected to task_manager are too much biased to the drilling task.
-    - `task_manager` publishes not each bim element but one message containing everything required as a chuck.
-    - This might be the heaviest work
-4. Minor fixes
-    - Sometimes, the robot is rotating while moving its robot arm
-        + Seems fixed but need to keep tracking of it
-    - Too many logs, make the log output slimmer
-        + server: returned
-        + client: requested
-        + publisher: published
-        + subscriber: received
-    - Still need to clean the task_representation
+User interface. Loads the point-cloud scan, renders clickable markers on every drillable element, and computes a color-coded hazard map on the target wall.
+
+| Node | Role |
+|---|---|
+| `pointcloud_publisher` | Publishes the scan once on `/cloud` (latched) |
+| `task_distributor` | Places interactive markers in RViz; publishes `/task/selected_element` on click |
+| `task_representer` | Computes working-sphere zones on the wall; publishes `/task/representation` (RViz) and `/task/zones` (MoveIt) |
+
+**Zone colors**
+
+| Color | Meaning |
+|---|---|
+| Blue | Selected drill target |
+| Red | On-robot-side MEP element — MoveIt collision voxel |
+| Orange | Behind-wall MEP element intersecting the working sphere — hidden hazard |
+| Green | Clear reachable area |
+
+---
+
+### [robot_gazebo](src/robot_gazebo/README.md)
+
+Simulation and execution. Populates the Gazebo world with IFC geometry, teleports the robot to the computed position, and drives MoveIt to execute the arm trajectory. Stops the arm if a behind-wall element lies within the drill depth.
+
+| Node | Role |
+|---|---|
+| `world_spawner` | Spawns IFC-derived Gazebo models at the correct world pose |
+| `robot_spawner` | Spawns and teleports the Husky+UR5e; signals `/robot/motion_ready` after each teleport |
+| `robot_motion_planner` | Builds MoveIt collision scene from RED-zone voxels and target wall; plans and executes arm trajectory; stops on depth conflict with behind-wall elements |
+
+## Prerequisites
+
+```bash
+sudo apt install ros-humble-clearpath-control
+sudo apt install ros-humble-clearpath-description
+sudo apt install ros-humble-ur-description
+```
+
+Neo4j credentials must be set in the environment or in a `.env` file (without `export`):
+
+```bash
+export NEO4J_URI=neo4j://localhost:7687
+export NEO4J_USER=neo4j
+export NEO4J_PASSWORD=<password>
+```
+
+## Launch
+
+```bash
+# Terminal 1 — BIM graph
+ros2 launch robot_graph robot_graph.launch.py
+
+# Terminal 2 — Task pipeline
+ros2 launch robot_task drilling_task.launch.py
+
+# Terminal 3 — Visualization
+ros2 launch robot_rviz robot_rviz.launch.py
+
+# Terminal 4 — Simulation + execution
+ros2 launch robot_gazebo robot_gazebo.launch.py
+```

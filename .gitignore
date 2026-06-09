@@ -15,3 +15,6 @@ __pycache__/
 
 # Template
 template/
+
+# Image files
+images/

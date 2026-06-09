@@ -30,12 +30,10 @@ class TaskDistributor(Node):
         self._marker_diameter = float(
             self.get_parameter('marker_diameter').value)
 
-        # === Service servers and clients ===
         # Clients
         self._task_representer_cli = self.create_client(
             Trigger, '/task_representer/update')
 
-        # === Topic publishers and subscribers ===
         latched_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.RELIABLE,
@@ -48,18 +46,15 @@ class TaskDistributor(Node):
         # Subscribers
         self._cloud_sub = self.create_subscription(
             PointCloud2, '/cloud', self._on_cloud, latched_qos)
-        self._mep_element_sub = self.create_subscription(
-            String, '/ifc/mep_elements', self._on_mep_elements, latched_qos)
-        self._wall_sub = self.create_subscription(
-            String, '/ifc/walls', self._on_walls, latched_qos)
+        self._drill_elements_sub = self.create_subscription(
+            String, '/drilling/elements', self._on_drill_elements, latched_qos)
         self._matrix_sub = self.create_subscription(
             String, '/matrix', self._on_matrix, latched_qos)
         self._marker_server = InteractiveMarkerServer(self, 'task')
 
         self._cloud: np.ndarray | None = None
         self._frame_id: str = 'world'
-        self._mep_elements: list[dict] | None = None
-        self._walls: list[dict] | None = None
+        self._drill_elements: list[dict] | None = None
         self._matrix: np.ndarray | None = None
         self._element_index: dict[str, dict] = {}
         self._marker_positions: dict[str, tuple[float, float, float]] = {}
@@ -77,34 +72,19 @@ class TaskDistributor(Node):
             f'Received cloud with {len(self._cloud)} points on /cloud (frame_id={self._frame_id}).')
         self._try_process()
 
-    def _on_mep_elements(self, msg: String) -> None:
+    def _on_drill_elements(self, msg: String) -> None:
         try:
             payload = json.loads(msg.data)
         except json.JSONDecodeError as exc:
-            self.get_logger().error(f'Invalid /ifc/mep_elements JSON: {exc}')
+            self.get_logger().error(f'Invalid /drilling/elements JSON: {exc}')
             return
-        self._mep_elements = payload.get('mep_elements', [])
-        if self._mep_elements is None:
-            self.get_logger().warn(
-                '/ifc/mep_elements had no "mep_elements" field.')
+        self._drill_elements = payload.get('elements', [])
+        if not self._drill_elements:
+            self.get_logger().warn('/drilling/elements had no "elements" field.')
             return
         self.get_logger().info(
-            f'Received {len(self._mep_elements)} tasks on /ifc/mep_elements.')
+            f'Received {len(self._drill_elements)} drillable elements on /drilling/elements.')
         self._try_process()
-
-    def _on_walls(self, msg: String) -> None:
-        try:
-            payload = json.loads(msg.data)
-        except json.JSONDecodeError as exc:
-            self.get_logger().error(f'Invalid /ifc/walls JSON: {exc}')
-            return
-        self._walls = payload.get('walls', [])
-        if self._walls is None:
-            self.get_logger().warn(
-                '/ifc/walls had no "walls" field.')
-            return
-        self.get_logger().info(
-            f'Received {len(self._walls)} walls on /ifc/walls.')
 
     def _on_matrix(self, msg: String) -> None:
         try:
@@ -122,7 +102,7 @@ class TaskDistributor(Node):
         self._try_process()
 
     def _try_process(self) -> None:
-        if self._cloud is None or self._mep_elements is None or self._matrix is None:
+        if self._cloud is None or self._drill_elements is None or self._matrix is None:
             return
         if len(self._cloud) == 0:
             self.get_logger().warn('Empty point cloud; skipping.')
@@ -132,9 +112,9 @@ class TaskDistributor(Node):
         self._element_index.clear()
         self._marker_positions.clear()
 
-        for element in self._mep_elements:
-            wall = element.get('wall') or {}
-            center = wall.get('center')
+        for element in self._drill_elements:
+            penet = element.get('penetration') or {}
+            center = penet.get('center') or element.get('center')
             element_id = element.get('id')
             if center is None or len(center) != 3 or not element_id:
                 continue
@@ -215,7 +195,7 @@ class TaskDistributor(Node):
             self._selected_id = element['id']
             self._redraw_markers()
         msg = String()
-        msg.data = json.dumps({'selected_element': element})
+        msg.data = json.dumps({'id': element['id']})
         self._selected_element_pub.publish(msg)
         self.get_logger().info(
             f"Selected element on /task/selected_element: id={element['id']}")

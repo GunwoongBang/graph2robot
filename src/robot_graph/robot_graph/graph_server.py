@@ -44,7 +44,6 @@ class GraphServer(Node):
                 self.get_logger().error(
                     f'Failed to connect to Neo4j at {uri}: {exc}.')
 
-        # === Service servers and clients ===
         # Servers
         self._space_srv = self.create_service(
             Trigger, '/graph/list_spaces', self._handle_list_spaces)
@@ -105,8 +104,7 @@ class GraphServer(Node):
             return response
 
         try:
-            layers = query_layers(
-                self.driver, self._query_limit)  # Placeholder
+            layers = query_layers(self.driver, self._query_limit)
         except Exception as exc:
             self.get_logger().error(f'Failed to query layers: {exc}')
             response.success = False

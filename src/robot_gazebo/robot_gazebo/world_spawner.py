@@ -32,11 +32,9 @@ class WorldSpawner(Node):
 
         self._ifc_models = self._extract_ifc_models()
 
-        # === Service publishers and clients ===
         # Clients
         self._spawn_cli = self.create_client(SpawnEntity, '/spawn_entity')
 
-        # === Topic publishers and subscribers ===
         latched_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.RELIABLE,

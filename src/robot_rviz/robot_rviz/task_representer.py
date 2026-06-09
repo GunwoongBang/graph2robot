@@ -18,7 +18,7 @@ from sensor_msgs_py import point_cloud2
 from std_msgs.msg import String
 
 # With UR5e's URDF and LLM, it can be more generalized
-SPHERE_RADIUS = 0.811  # meters; UR5e reach by default.
+SPHERE_RADIUS = 1.00  # meters; UR5e 850mm reach + 150mm drill tip ≈ 1.0m max.
 CENTER_Z_OFFSET = 0.529  # meters; height where the shoulder joint sits
 CSV_FILENAME = 'cloudGlobal_cleaned_excluded.csv'
 
@@ -36,7 +36,6 @@ class TaskRepresenter(Node):
         self._csv_path = package_share / 'models' / CSV_FILENAME
         self._wall_indices: dict[str, np.ndarray] = self._load_wall_index_map()
 
-        # === Topic publishers and subscribers ===
         latched_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.RELIABLE,
@@ -49,29 +48,23 @@ class TaskRepresenter(Node):
         self._zones_pub = self.create_publisher(
             PointCloud2, '/task/zones', latched_qos)
         # Subscribers
-        self._cloud_sub = self.create_subscription(
+        self.create_subscription(
             PointCloud2, '/cloud', self._on_cloud, latched_qos)
-        self._matrix_sub = self.create_subscription(
+        self.create_subscription(
             String, '/matrix', self._on_matrix, latched_qos)
-        self._walls_sub = self.create_subscription(
-            String, '/ifc/walls', self._on_walls, latched_qos)
-        self._selected_element_sub = self.create_subscription(
-            String, '/task/selected_element', self._on_selected_element, latched_qos)
-        self._filtered_elements_sub = self.create_subscription(
-            String, '/task/filtered_elements', self._on_filtered_elements, latched_qos)
-        self._target_wall_sub = self.create_subscription(
-            String, '/task/target_wall', self._on_target_wall, latched_qos)
-        self._target_position_sub = self.create_subscription(
+        self.create_subscription(
             String, '/robot/target_position', self._on_target_position, latched_qos)
+        self.create_subscription(
+            String, '/drilling/context', self._on_drill_context, latched_qos)
+        self.create_subscription(
+            String, '/drilling/elements', self._on_drill_elements, latched_qos)
 
         self._cloud: np.ndarray | None = None
         self._frame_id: str = 'world'
         self._matrix: np.ndarray | None = None
-        self._walls: list[dict] | None = None
-        self._selected_element: str | None = None
-        self._filtered_elements: list[dict] | None = None
-        self._target_wall: str | None = None
         self._target_position: dict | None = None
+        self._drill_context: dict | None = None
+        self._drill_elements: list[dict] | None = None
 
     def _load_wall_index_map(self) -> dict[str, np.ndarray]:
         if not self._csv_path.exists():
@@ -118,67 +111,27 @@ class TaskRepresenter(Node):
         self.get_logger().info('Received transform matrix on /matrix.')
         self._try_process()
 
-    def _on_walls(self, msg: String) -> None:
+    def _on_drill_context(self, msg: String) -> None:
         try:
-            payload = json.loads(msg.data)
+            self._drill_context = json.loads(msg.data)
         except json.JSONDecodeError as exc:
-            self.get_logger().error(f'Invalid /ifc/walls JSON: {exc}')
+            self.get_logger().error(f'Invalid /drilling/context JSON: {exc}')
             return
-        self._walls = payload.get('walls', [])
-        if self._walls is None:
-            self.get_logger().warn('/ifc/walls had no "walls" field.')
-            return
+        mep_id = (self._drill_context.get('element') or {}).get('id', '')
+        wall_id = (self._drill_context.get('wall') or {}).get('id', '')
         self.get_logger().info(
-            f'Received {len(self._walls)} walls on /ifc/walls.')
+            f'Got /drilling/context: mep={mep_id} wall={wall_id}.')
         self._try_process()
 
-    def _on_selected_element(self, msg: String) -> None:
+    def _on_drill_elements(self, msg: String) -> None:
         try:
             payload = json.loads(msg.data)
         except json.JSONDecodeError as exc:
-            self.get_logger().error(
-                f'Invalid /task/selected_element JSON: {exc}')
+            self.get_logger().error(f'Invalid /drilling/elements JSON: {exc}')
             return
-        element = payload.get('selected_element') or {}
-        self._selected_element = element.get('id')
-        if self._selected_element is None:
-            self.get_logger().warn(
-                '/task/selected_element had no "selected_element.id" field.')
-            return
+        self._drill_elements = payload.get('elements', [])
         self.get_logger().info(
-            f'Received selected element on /task/selected_element: id={self._selected_element}')
-        self._try_process()
-
-    def _on_filtered_elements(self, msg: String) -> None:
-        try:
-            payload = json.loads(msg.data)
-        except json.JSONDecodeError as exc:
-            self.get_logger().error(
-                f'Invalid /task/filtered_elements JSON: {exc}')
-            return
-        self._filtered_elements = payload.get('filtered_elements', [])
-        if self._filtered_elements is None:
-            self.get_logger().warn(
-                '/task/filtered_elements had no "filtered_elements" field.')
-            return
-        self.get_logger().info(
-            f'Received {len(self._filtered_elements)} filtered elements on /task/filtered_elements.')
-
-    def _on_target_wall(self, msg: String) -> None:
-        try:
-            payload = json.loads(msg.data)
-        except json.JSONDecodeError as exc:
-            self.get_logger().error(
-                f'Invalid /task/target_wall JSON: {exc}')
-            return
-        self._target_wall = payload.get('wall_id')
-        if self._target_wall is None:
-            self.get_logger().warn(
-                '/task/target_wall had no "wall_id" field.')
-            return
-        self.get_logger().info(
-            f'Received target wall on /task/target_wall: {self._target_wall}')
-        self._try_process()
+            f'Got /drilling/elements: {len(self._drill_elements)} elements.')
 
     def _on_target_position(self, msg: String) -> None:
         try:
@@ -203,8 +156,7 @@ class TaskRepresenter(Node):
 
     def _try_process(self) -> None:
         if (self._cloud is None or self._matrix is None
-                or self._target_position is None or self._target_wall is None
-                or self._selected_element is None or self._walls is None):
+                or self._target_position is None or self._drill_context is None):
             return
         if len(self._cloud) == 0:
             self.get_logger().warn('Empty point cloud; skipping.')
@@ -216,9 +168,10 @@ class TaskRepresenter(Node):
         self._publish_representation(kept_pts, categories)
         self._publish_zones(kept_pts, categories)
         red_n, orange_n, blue_n, green_n = totals
+        wall_id = (self._drill_context.get('wall') or {}).get('id', '')
         self.get_logger().info(
             f'Published {len(kept_pts)} task points on /task/representation '
-            f'+ /task/zones (wall={self._target_wall}, '
+            f'+ /task/zones (wall={wall_id}, '
             f'green={green_n}, orange={orange_n}, '
             f'blue={blue_n}, red={red_n}).')
 
@@ -233,32 +186,30 @@ class TaskRepresenter(Node):
         center = (self._matrix @ ifc_pos)[:3].astype(np.float32)
         center[2] += CENTER_Z_OFFSET  # Adjust for shoulder joint height
 
-        wall_idx = self._wall_indices.get(self._target_wall)
+        wall_id = (self._drill_context.get('wall') or {}).get('id')
+        wall_idx = self._wall_indices.get(wall_id)
         if wall_idx is None or len(wall_idx) == 0:
             self.get_logger().warn(
-                f'No points on wall {self._target_wall} in CSV map.')
+                f'No points on wall {wall_id} in CSV map.')
             return None
 
         wall_pts = self._cloud[wall_idx]
         dists_sq = np.sum((wall_pts - center) ** 2, axis=1)
         in_sphere = dists_sq <= (SPHERE_RADIUS * SPHERE_RADIUS)
 
-        target_wall_dict = next(
-            (w for w in self._walls if w.get('id') == self._target_wall), None)
-        if target_wall_dict is None:
-            self.get_logger().warn(
-                f'Wall id={self._target_wall} not found in /ifc/walls.')
-            return None
-        axis2 = target_wall_dict.get('axis2')
+        wall_id = (self._drill_context.get('wall') or {}).get('id')
+        selected_id = (self._drill_context.get('element') or {}).get('id')
+        axis2 = (self._drill_context.get('wall') or {}).get('axis2')
         if axis2 is None or len(axis2) != 3:
             self.get_logger().warn(
-                f'Wall id={self._target_wall} has no valid axis2.')
+                f'Wall {wall_id} has no valid axis2 in context.')
             return None
-        # Surface axes = the two indices perpendicular to axis2.
-        normal_axis = int(np.argmax(np.abs(axis2)))
-        surface_axes = [i for i in range(3) if i != normal_axis]
 
-        # Convert wall cloud points and working-sphere center to IFC frame (mm).
+        # Wall surface axes: the two axes perpendicular to the wall normal.
+        normal_axis = int(np.argmax(np.abs(axis2)))
+        ax_a, ax_b = [i for i in range(3) if i != normal_axis]
+
+        # Convert wall cloud points to IFC frame (mm).
         inv_matrix = np.linalg.inv(self._matrix)
         homog = np.hstack([
             wall_pts.astype(np.float64),
@@ -266,6 +217,8 @@ class TaskRepresenter(Node):
         ])
         wall_pts_ifc_mm = ((inv_matrix @ homog.T).T[:, :3] * 1000.0).astype(
             np.float32)
+
+        # IFC-mm position of the working-sphere centre (robot shoulder).
         sphere_h = np.array(
             [center[0], center[1], center[2], 1.0], dtype=np.float64)
         sphere_ifc_mm = (inv_matrix @ sphere_h)[:3].astype(np.float64) * 1000.0
@@ -275,113 +228,58 @@ class TaskRepresenter(Node):
         orange_mask = np.zeros_like(in_sphere)
         blue_mask = np.zeros_like(in_sphere)
 
-        # 1) On-wall danger zone (red)
-        if self._filtered_elements:
-            for e in self._filtered_elements:
-                if e.get('id') == self._selected_element:
-                    continue
-                wall = e.get('wall') or {}
-                if wall.get('id') != self._target_wall:
-                    continue
-                c_mm = wall.get('center')
-                if c_mm is None or len(c_mm) != 3:
-                    continue
-                p_radius = wall.get('radius')
-                p_length = wall.get('length')
-                p_sizeX = wall.get('sizeX')
-                p_sizeY = wall.get('sizeY')
-                p_sizeZ = wall.get('sizeZ')
-                is_cyl = p_radius is not None and p_length is not None
-                is_box = (p_sizeX is not None and p_sizeY is not None
-                          and p_sizeZ is not None)
-                if not (is_cyl or is_box):
-                    continue
-                center_mm = np.array(c_mm, dtype=np.float32)
-                diff = wall_pts_ifc_mm - center_mm
-                if is_cyl:
-                    axis = np.array(axis2, dtype=np.float32)
-                    along = diff @ axis
-                    perp_sq = np.sum(diff * diff, axis=1) - along * along
-                    inside = (np.abs(along) <= p_length / 2.0) & (
-                        perp_sq <= p_radius * p_radius)
-                else:
-                    inside = (
-                        (np.abs(diff[:, 0]) <= p_sizeX / 2.0) &
-                        (np.abs(diff[:, 1]) <= p_sizeY / 2.0) &
-                        (np.abs(diff[:, 2]) <= p_sizeZ / 2.0)
-                    )
-                red_mask |= inside & in_sphere
+        def _wall_footprint(c_mm: list, bmin: list | None, bmax: list | None) -> np.ndarray:
+            """Project element bounding box onto the wall surface (2D shadow)."""
+            if bmin is not None and bmax is not None and len(bmin) == 3 and len(bmax) == 3:
+                half_a = (float(bmax[ax_a]) - float(bmin[ax_a])) / 2.0
+                half_b = (float(bmax[ax_b]) - float(bmin[ax_b])) / 2.0
+            else:
+                half_a = half_b = 150.0  # 150 mm default radius when bbox missing
+            da = wall_pts_ifc_mm[:, ax_a] - float(c_mm[ax_a])
+            db = wall_pts_ifc_mm[:, ax_b] - float(c_mm[ax_b])
+            return (np.abs(da) <= half_a) & (np.abs(db) <= half_b)
 
-        # 2) Beyond-wall danger zone (orange)
-        sphere_min = sphere_ifc_mm - sphere_r_mm
-        sphere_max = sphere_ifc_mm + sphere_r_mm
-        if self._filtered_elements:
-            for e in self._filtered_elements:
-                if e.get('id') == self._selected_element:
-                    continue
-                aabb = self._element_aabb_mm(e)
-                if aabb is None:
-                    continue
-                e_center_mm, half_mm = aabb
-                e_min = e_center_mm - half_mm
-                e_max = e_center_mm + half_mm
-                clip_min = np.maximum(e_min, sphere_min)
-                clip_max = np.minimum(e_max, sphere_max)
-                if np.any(clip_min > clip_max):
-                    continue
-                clip_center = (clip_min + clip_max) / 2.0
-                clip_half = (clip_max - clip_min) / 2.0
-                a, b = surface_axes
-                shadow = (
-                    (np.abs(wall_pts_ifc_mm[:, a] - clip_center[a]) <= clip_half[a]) &
-                    (np.abs(wall_pts_ifc_mm[:, b] -
-                     clip_center[b]) <= clip_half[b])
+        # Nearby elements come from graph topology: all MEP elements hosted in
+        # spaces that bound the target wall, tagged robot_side True/False.
+        for e in self._drill_context.get('nearby_elements', []):
+            c_mm = e.get('center')
+            if c_mm is None or len(c_mm) != 3:
+                continue
+            # Geometry-based sphere intersection: use AABB when available so that
+            # elongated elements (tall pipes, etc.) are not incorrectly excluded
+            # just because their centre is outside the sphere.
+            bmin = e.get('bbox_min')
+            bmax = e.get('bbox_max')
+            if bmin is not None and bmax is not None and len(bmin) == 3 and len(bmax) == 3:
+                closest = np.clip(
+                    sphere_ifc_mm,
+                    np.array(bmin, dtype=np.float64),
+                    np.array(bmax, dtype=np.float64),
                 )
-                contrib = shadow & in_sphere & ~red_mask & ~blue_mask
-                added = int(contrib.sum())
+                outside = float(np.sum((closest - sphere_ifc_mm) ** 2)) > sphere_r_mm ** 2
+            else:
+                ec = np.array(c_mm, dtype=np.float64)
+                outside = float(np.sum((ec - sphere_ifc_mm) ** 2)) > sphere_r_mm ** 2
+            if outside:
+                continue
+            footprint = _wall_footprint(c_mm, e.get('bbox_min'), e.get('bbox_max'))
+            if e.get('robot_side'):
+                red_mask |= footprint & in_sphere
+            else:
+                added = int((footprint & in_sphere).sum())
                 if added > 0:
                     self.get_logger().info(
-                        f'  orange from {e.get("id")} {e.get("name")} '
-                        f'(shape={e.get("shapeType")}): +{added} pts')
-                orange_mask |= shadow & in_sphere
+                        f'  orange {e.get("id")} {e.get("name")}: +{added} pts')
+                orange_mask |= footprint & in_sphere
 
-        # 3) On-wall task zone (blue)
-        if self._filtered_elements:
-            for e in self._filtered_elements:
-                if e.get('id') != self._selected_element:
-                    continue
-                wall = e.get('wall') or {}
-                if wall.get('id') != self._target_wall:
-                    break
-                c_mm = wall.get('center')
-                if c_mm is None or len(c_mm) != 3:
-                    break
-                p_radius = wall.get('radius')
-                p_length = wall.get('length')
-                p_sizeX = wall.get('sizeX')
-                p_sizeY = wall.get('sizeY')
-                p_sizeZ = wall.get('sizeZ')
-                is_cyl = p_radius is not None and p_length is not None
-                is_box = (p_sizeX is not None and p_sizeY is not None
-                          and p_sizeZ is not None)
-                if not (is_cyl or is_box):
-                    break
-                center_mm = np.array(c_mm, dtype=np.float32)
-                diff = wall_pts_ifc_mm - center_mm
-                if is_cyl:
-                    # Cylinder axis = wall's axis2 (perpendicular to wall).
-                    axis = np.array(axis2, dtype=np.float32)
-                    along = diff @ axis
-                    perp_sq = np.sum(diff * diff, axis=1) - along * along
-                    inside = (np.abs(along) <= p_length / 2.0) & (
-                        perp_sq <= p_radius * p_radius)
-                else:
-                    inside = (
-                        (np.abs(diff[:, 0]) <= p_sizeX / 2.0) &
-                        (np.abs(diff[:, 1]) <= p_sizeY / 2.0) &
-                        (np.abs(diff[:, 2]) <= p_sizeZ / 2.0)
-                    )
-                blue_mask |= inside & in_sphere
+        # 3) Blue — selected element's footprint on the wall surface.
+        for e in (self._drill_elements or []):
+            if e.get('id') == selected_id:
+                penet = e.get('penetration') or {}
+                pc = penet.get('center')
+                if pc and len(pc) == 3:
+                    blue_mask |= _wall_footprint(
+                        pc, e.get('bbox_min'), e.get('bbox_max')) & in_sphere
                 break
 
         # Apply priority red > blue > orange > green, then collapse into one
@@ -432,9 +330,6 @@ class TaskRepresenter(Node):
 
     def _publish_zones(
             self, kept_pts: np.ndarray, categories: np.ndarray) -> None:
-        """Category-tagged PointCloud2 for downstream consumers (motion
-        planner, validators). Layout per point: 3xFLOAT32 (x,y,z) + UINT8
-        category + 3 bytes pad, point_step=16 (4-byte aligned)."""
         n = len(kept_pts)
         struct_dtype = np.dtype([
             ('x', np.float32),
@@ -468,35 +363,6 @@ class TaskRepresenter(Node):
         msg.data = data.tobytes()
         msg.is_dense = True
         self._zones_pub.publish(msg)
-
-    @staticmethod
-    def _element_aabb_mm(e: dict) -> tuple[np.ndarray, np.ndarray] | None:
-        center = e.get('center')
-        if (e.get('sizeX') is not None and e.get('sizeY') is not None
-                and e.get('sizeZ') is not None):
-            if center is None or len(center) != 3:
-                return None
-            half = np.array([
-                e['sizeX'] / 2.0, e['sizeY'] / 2.0, e['sizeZ'] / 2.0,
-            ], dtype=np.float32)
-            return np.array(center, dtype=np.float32), half
-        bmin = e.get('bbox_min')
-        bmax = e.get('bbox_max')
-        if (bmin is not None and bmax is not None
-                and len(bmin) == 3 and len(bmax) == 3):
-            bmin_a = np.array(bmin, dtype=np.float32)
-            bmax_a = np.array(bmax, dtype=np.float32)
-            return (bmin_a + bmax_a) / 2.0, (bmax_a - bmin_a) / 2.0
-        return None
-
-    @staticmethod
-    def _aabb_intersects_sphere(
-            center_mm: np.ndarray, half_mm: np.ndarray,
-            sphere_center_mm: np.ndarray, sphere_r_mm: float) -> bool:
-        closest = np.clip(
-            sphere_center_mm, center_mm - half_mm, center_mm + half_mm)
-        d2 = float(np.sum((closest - sphere_center_mm) ** 2))
-        return d2 <= sphere_r_mm * sphere_r_mm
 
     @staticmethod
     def _pack_rgb(r: int, g: int, b: int) -> float:

@@ -1,0 +1,68 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://pcd2scenegraph/ifc/graph_schema.json",
+    "title": "IFC Topic (/ifc/*) Schema",
+    "description": "Generalized schema for entities published on the /ifc/* topics (e.g. /ifc/wall, /ifc/space, /ifc/mep_elements). Each topic carries a named collection of entities; every entity has its own attributes and a list of typed relationships to other entities.",
+
+    "type": "object",
+    "minProperties": 1,
+    "additionalProperties": {
+        "type": "array",
+        "description": "A collection of entities of one kind, keyed by the topic name (e.g. \"walls\", \"spaces\", \"mep_elements\").",
+        "items": { "$ref": "#/$defs/entity" }
+    },
+
+    "$defs": {
+        "entity": {
+            "type": "object",
+            "description": "A scene-graph node. Carries identity, an open set of attributes, and outgoing relationships to other entities.",
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "description": "Stable unique identifier (e.g. the IFC GlobalId)."
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Human-readable label."
+                },
+                "type": {
+                    "type": "string",
+                    "description": "Entity class (e.g. \"IfcWall\", \"IfcSpace\", \"IfcFlowSegment\")."
+                },
+                "attributes": {
+                    "type": "object",
+                    "description": "Open set of entity-specific properties (geometry, materials, custom fields). Shape depends on the entity type.",
+                    "additionalProperties": true
+                },
+                "relationship": {
+                    "type": "array",
+                    "description": "Outgoing edges to other entities.",
+                    "items": { "$ref": "#/$defs/relationship" }
+                }
+            },
+            "required": ["id", "type"],
+            "additionalProperties": true
+        },
+
+        "relationship": {
+            "type": "object",
+            "description": "A typed, directed edge from this entity to a target entity, referenced by its identity.",
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "description": "id of the target entity this edge points to."
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Human-readable label of the target entity."
+                },
+                "type": {
+                    "type": "string",
+                    "description": "Relationship kind (e.g. \"contains\", \"bounded_by\", \"hosted_on\", \"connected_to\")."
+                }
+            },
+            "required": ["id"],
+            "additionalProperties": true
+        }
+    }
+}

@@ -1,0 +1,91 @@
+-- name: QUERY_SPACES
+MATCH (s:Space)
+OPTIONAL MATCH (s)-[b:BOUNDED_BY]->(w:Wall)
+WITH s,
+     collect(CASE WHEN w IS NULL THEN NULL ELSE {
+         type: 'bounded_by', id: w.id, side: b.side
+     } END) AS wall_raw
+OPTIONAL MATCH (s)-[:HOSTS]->(me:MEPElement)
+WITH s, wall_raw,
+     collect(CASE WHEN me IS NULL THEN NULL ELSE {
+         type: 'hosts', id: me.id
+     } END) AS mep_raw
+RETURN s.id AS id,
+       'IfcSpace' AS type,
+       {} AS attributes,
+       [x IN wall_raw WHERE x IS NOT NULL] +
+       [x IN mep_raw  WHERE x IS NOT NULL] AS relationship
+ORDER BY s.name
+LIMIT $limit
+
+-- name: QUERY_WALLS
+MATCH (w:Wall)
+OPTIONAL MATCH (w)-[:HAS_LAYER]->(l:Layer)
+WITH w,
+     collect(CASE WHEN l IS NULL THEN NULL ELSE {
+         type: 'has_layer', id: l.id
+     } END) AS layer_raw
+OPTIONAL MATCH (w)-[p:PENETRATED_BY]->(me:MEPElement)
+WITH w, layer_raw,
+     collect(CASE WHEN me IS NULL THEN NULL ELSE {
+         type:    'penetrated_by',
+         id:       me.id,
+         center:   p.penetrationCenter,
+         depth_mm: p.penetrationLength,
+         radius:   p.penetrationRadius,
+         sizeX:    p.penetrationSizeX,
+         sizeY:    p.penetrationSizeY,
+         sizeZ:    p.penetrationSizeZ
+     } END) AS penet_raw
+RETURN w.id AS id,
+       'IfcWallStandardCase' AS type,
+       {
+           axis2:          w.axis2,
+           center:         w.center,
+           bbox_min:       w.bbox_min,
+           bbox_max:       w.bbox_max,
+           directionSense: w.directionSense
+       } AS attributes,
+       [x IN layer_raw WHERE x IS NOT NULL] +
+       [x IN penet_raw WHERE x IS NOT NULL] AS relationship
+ORDER BY w.name
+LIMIT $limit
+
+-- name: QUERY_LAYERS
+MATCH (l:Layer)
+RETURN l.id AS id,
+       'IfcMaterialLayer' AS type,
+       {
+           name:       l.name,
+           layerIndex: l.layerIndex,
+           thickness:  l.thickness
+       } AS attributes,
+       [] AS relationship
+ORDER BY l.name
+LIMIT $limit
+
+-- name: QUERY_MEP_SYSTEMS
+MATCH (ms:MEPSystem)
+RETURN ms.id AS id,
+       'IfcDistributionSystem' AS type,
+       {
+           name: ms.name
+       } AS attributes,
+       [] AS relationship
+ORDER BY ms.name
+LIMIT $limit
+
+-- name: QUERY_MEP_ELEMENTS
+MATCH (me:MEPElement)
+RETURN me.id AS id,
+       'IfcDistributionElement' AS type,
+       {
+           name:      me.name,
+           center:    me.center,
+           bbox_min:  me.bbox_min,
+           bbox_max:  me.bbox_max,
+           shapeType: me.shapeType
+       } AS attributes,
+       [] AS relationship
+ORDER BY me.name
+LIMIT $limit
