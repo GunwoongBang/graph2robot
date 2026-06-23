@@ -1,21 +1,27 @@
-# pcd2scenegraph
+# graph2robot
 
-A ROS 2 (Humble) system that turns a BIM model stored in Neo4j into executable robot drilling tasks. A Husky+UR5e robot is placed automatically in front of a selected MEP element, a working-zone hazard map is computed on the target wall, and MoveIt plans and executes the arm trajectory to each drill point.
+A ROS 2 (Humble) system that turns a BIM model stored in Neo4j into executable robot tasks. A Husky+UR5e robot is placed automatically in front of a selected MEP element, a working-zone hazard map is computed on the target wall, and MoveIt plans and executes the arm trajectory to each target point.
 
-## System overview
+## System architecture
 
-```
-Neo4j ──(services)──► robot_graph
-                           │
-                      /ifc/* topics
-                           │
-                      robot_task ──► /drilling/elements ──► robot_rviz
-                           │                                     │
-                      /drilling/context                  /task/selected_element
-                           │                                     │
-                      /robot/target_position ──► robot_gazebo ◄──┘
-                      /robot/target_point ───────────►    │
-                                                     /task/zones ──► MoveIt
+```mermaid
+flowchart TB
+    Neo4j[("Neo4j<br/>Graph DB")]
+
+    robot_graph["robot_graph"]
+    robot_task["robot_task"]
+    robot_rviz["robot_rviz"]
+    robot_gazebo["robot_gazebo"]
+
+    Neo4j -->|"exports BIM model"| robot_graph
+    robot_graph -->|"serves BIM entities"| robot_task
+    robot_task -->|"drillable elements + drill plan"| robot_rviz
+    robot_task -->|"robot pose + drill targets"| robot_gazebo
+    robot_rviz -->|"user-selected element"| robot_task
+    robot_rviz -->|"working-zone hazard map"| robot_gazebo
+
+    classDef extern fill:#374151,stroke:#fbbf24,color:#fff;
+    class Neo4j extern;
 ```
 
 ## Packages
