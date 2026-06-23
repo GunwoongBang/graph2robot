@@ -15,8 +15,8 @@ flowchart TB
 
     Neo4j -->|"exports BIM model"| robot_graph
     robot_graph -->|"serves BIM entities"| robot_task
-    robot_task -->|"drillable elements + drill plan"| robot_rviz
-    robot_task -->|"robot pose + drill targets"| robot_gazebo
+    robot_task -->|"drillable elements <br>+ drill plan"| robot_rviz
+    robot_task -->|"robot pose <br>+ drill targets"| robot_gazebo
     robot_rviz -->|"user-selected element"| robot_task
     robot_rviz -->|"working-zone hazard map"| robot_gazebo
 
