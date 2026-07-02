@@ -84,7 +84,13 @@ RETURN me.id AS id,
            center:    me.center,
            bbox_min:  me.bbox_min,
            bbox_max:  me.bbox_max,
-           shapeType: me.shapeType
+           shapeType: me.shapeType,
+           direction: me.direction,
+           radius:    me.radius,
+           length:    me.length,
+           sizeX:     me.sizeX,
+           sizeY:     me.sizeY,
+           sizeZ:     me.sizeZ
        } AS attributes,
        [] AS relationship
 ORDER BY me.name

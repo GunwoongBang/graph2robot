@@ -131,9 +131,15 @@ class DrillContextBuilder(Node):
                 'id': mep_id,
                 'name': attrs.get('name'),
                 'center': attrs.get('center'),
+                'shapeType': attrs.get('shapeType'),
+                'direction': attrs.get('direction'),
+                'radius': attrs.get('radius'),
+                'length': attrs.get('length'),
+                'sizeX': attrs.get('sizeX'),
+                'sizeY': attrs.get('sizeY'),
+                'sizeZ': attrs.get('sizeZ'),
                 'bbox_min': attrs.get('bbox_min'),
                 'bbox_max': attrs.get('bbox_max'),
-                'shapeType': attrs.get('shapeType'),
                 'wall_id': penet_rel.get('wall_id'),
                 'space_id': self._space_id_by_mep.get(mep_id),
                 'penetration': {
@@ -240,9 +246,15 @@ class DrillContextBuilder(Node):
                 'id': mep_id,
                 'name': mep_attrs.get('name'),
                 'center': mep_attrs.get('center'),
+                'shapeType': shape_type,
+                'direction': mep_attrs.get('direction'),
+                'radius': mep_attrs.get('radius'),
+                'length': mep_attrs.get('length'),
+                'sizeX': mep_attrs.get('sizeX'),
+                'sizeY': mep_attrs.get('sizeY'),
+                'sizeZ': mep_attrs.get('sizeZ'),
                 'bbox_min': mep_attrs.get('bbox_min'),
                 'bbox_max': mep_attrs.get('bbox_max'),
-                'shapeType': shape_type,
             },
             'facing': facing_vec,
             'penetration': {
@@ -335,19 +347,24 @@ class DrillContextBuilder(Node):
     def _get_nearby_elements(self, wall_id: str, robot_space_id: str | None, selected_mep_id: str) -> list[dict]:
         """All MEP elements hosted in spaces that bound this wall.
 
-        robot_side=True  → element is in the robot's space (→ RED in RViz)
-        robot_side=False → element is behind the wall       (→ ORANGE in RViz)
+        robot_side=True  → element is on the same side of the wall as the robot (→ RED in RViz)
+        robot_side=False → element is behind the wall                            (→ ORANGE in RViz)
         """
         nearby: list[dict] = []
         seen_ids: set[str] = {selected_mep_id}
+        robot_side_val = self._get_bounded_by_side(robot_space_id, wall_id) if robot_space_id else None
         for space_id, space in self._spaces_by_id.items():
-            bounds_wall = any(
-                r.get('type') == 'bounded_by' and r.get('id') == wall_id
-                for r in (space.get('relationship') or [])
-            )
-            if not bounds_wall:
+            space_side_val = None
+            for r in (space.get('relationship') or []):
+                if r.get('type') == 'bounded_by' and r.get('id') == wall_id:
+                    space_side_val = r.get('side')
+                    break
+            if space_side_val is None:
                 continue
-            robot_side = (space_id == robot_space_id)
+            robot_side = (
+                str(space_side_val).upper() == str(robot_side_val).upper()
+                if robot_side_val else space_id == robot_space_id
+            )
             for rel in (space.get('relationship') or []):
                 if rel.get('type') != 'hosts':
                     continue
@@ -363,6 +380,13 @@ class DrillContextBuilder(Node):
                     'id': eid,
                     'name': attrs.get('name'),
                     'center': attrs.get('center'),
+                    'shapeType': attrs.get('shapeType'),
+                    'direction': attrs.get('direction'),
+                    'radius': attrs.get('radius'),
+                    'length': attrs.get('length'),
+                    'sizeX': attrs.get('sizeX'),
+                    'sizeY': attrs.get('sizeY'),
+                    'sizeZ': attrs.get('sizeZ'),
                     'bbox_min': attrs.get('bbox_min'),
                     'bbox_max': attrs.get('bbox_max'),
                     'robot_side': robot_side,

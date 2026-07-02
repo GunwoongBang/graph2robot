@@ -228,58 +228,130 @@ class TaskRepresenter(Node):
         orange_mask = np.zeros_like(in_sphere)
         blue_mask = np.zeros_like(in_sphere)
 
-        def _wall_footprint(c_mm: list, bmin: list | None, bmax: list | None) -> np.ndarray:
-            """Project element bounding box onto the wall surface (2D shadow)."""
-            if bmin is not None and bmax is not None and len(bmin) == 3 and len(bmax) == 3:
-                half_a = (float(bmax[ax_a]) - float(bmin[ax_a])) / 2.0
-                half_b = (float(bmax[ax_b]) - float(bmin[ax_b])) / 2.0
-            else:
-                half_a = half_b = 150.0  # 150 mm default radius when bbox missing
-            da = wall_pts_ifc_mm[:, ax_a] - float(c_mm[ax_a])
-            db = wall_pts_ifc_mm[:, ax_b] - float(c_mm[ax_b])
-            return (np.abs(da) <= half_a) & (np.abs(db) <= half_b)
+        def _element_in_sphere(e: dict) -> bool:
+            """Return True if any part of the element's volume overlaps the sphere."""
+            c = np.array(e.get('center', [0, 0, 0]), dtype=np.float64)
+            shape = e.get('shapeType', 'other')
+            if shape == 'cylindrical':
+                direction = e.get('direction')
+                radius = e.get('radius')
+                length = e.get('length')
+                if direction and radius is not None and length is not None:
+                    d = np.array(direction, dtype=np.float64)
+                    half_len = float(length) / 2.0
+                    p0, p1 = c - d * half_len, c + d * half_len
+                    seg = p1 - p0
+                    seg_len_sq = float(np.dot(seg, seg))
+                    if seg_len_sq > 1e-9:
+                        t = np.clip(float(np.dot(sphere_ifc_mm - p0, seg)) / seg_len_sq, 0.0, 1.0)
+                        closest = p0 + t * seg
+                    else:
+                        closest = p0
+                    return float(np.linalg.norm(sphere_ifc_mm - closest)) <= sphere_r_mm + float(radius)
+                return float(np.linalg.norm(c - sphere_ifc_mm)) <= sphere_r_mm
+            elif shape == 'rectangular':
+                sizes = [e.get('sizeX'), e.get('sizeY'), e.get('sizeZ')]
+                if all(s is not None for s in sizes):
+                    half_extents = np.array([float(s) for s in sizes]) / 2.0
+                    closest = np.clip(sphere_ifc_mm, c - half_extents, c + half_extents)
+                    return float(np.sum((closest - sphere_ifc_mm) ** 2)) <= sphere_r_mm ** 2
+                return float(np.linalg.norm(c - sphere_ifc_mm)) <= sphere_r_mm
+            else:  # 'other' — bbox
+                bmin = e.get('bbox_min')
+                bmax = e.get('bbox_max')
+                if bmin and bmax and len(bmin) == 3 and len(bmax) == 3:
+                    closest = np.clip(
+                        sphere_ifc_mm,
+                        np.array(bmin, dtype=np.float64),
+                        np.array(bmax, dtype=np.float64),
+                    )
+                    return float(np.sum((closest - sphere_ifc_mm) ** 2)) <= sphere_r_mm ** 2
+                return float(np.linalg.norm(c - sphere_ifc_mm)) <= sphere_r_mm
 
-        # Nearby elements come from graph topology: all MEP elements hosted in
-        # spaces that bound the target wall, tagged robot_side True/False.
+        def _element_footprint(e: dict, c_mm: list) -> np.ndarray:
+            """Boolean mask of wall points within the element's projected footprint."""
+            pa = wall_pts_ifc_mm[:, ax_a] - float(c_mm[ax_a])
+            pb = wall_pts_ifc_mm[:, ax_b] - float(c_mm[ax_b])
+            shape = e.get('shapeType', 'other')
+            if shape == 'cylindrical':
+                direction = e.get('direction')
+                radius = e.get('radius')
+                length = e.get('length')
+                if direction and radius is not None and length is not None:
+                    da = float(direction[ax_a])
+                    db = float(direction[ax_b])
+                    half_len = float(length) / 2.0
+                    norm2d_sq = da * da + db * db
+                    if norm2d_sq > 1e-9:
+                        s = np.clip((pa * da + pb * db) / norm2d_sq, -half_len, half_len)
+                        dist2 = (pa - s * da) ** 2 + (pb - s * db) ** 2
+                    else:
+                        dist2 = pa ** 2 + pb ** 2
+                    return dist2 <= float(radius) ** 2
+            elif shape == 'rectangular':
+                sizes = [e.get('sizeX'), e.get('sizeY'), e.get('sizeZ')]
+                if all(s is not None for s in sizes):
+                    half_a = float(sizes[ax_a]) / 2.0
+                    half_b = float(sizes[ax_b]) / 2.0
+                    return (np.abs(pa) <= half_a) & (np.abs(pb) <= half_b)
+            else:  # 'other' — bbox
+                bmin = e.get('bbox_min')
+                bmax = e.get('bbox_max')
+                if bmin and bmax and len(bmin) == 3 and len(bmax) == 3:
+                    half_a = (float(bmax[ax_a]) - float(bmin[ax_a])) / 2.0
+                    half_b = (float(bmax[ax_b]) - float(bmin[ax_b])) / 2.0
+                    return (np.abs(pa) <= half_a) & (np.abs(pb) <= half_b)
+            return (np.abs(pa) <= 150.0) & (np.abs(pb) <= 150.0)
+
+        # Nearby elements: all MEP elements hosted in spaces bounding the target
+        # wall, tagged robot_side True/False.
         for e in self._drill_context.get('nearby_elements', []):
             c_mm = e.get('center')
             if c_mm is None or len(c_mm) != 3:
                 continue
-            # Geometry-based sphere intersection: use AABB when available so that
-            # elongated elements (tall pipes, etc.) are not incorrectly excluded
-            # just because their centre is outside the sphere.
-            bmin = e.get('bbox_min')
-            bmax = e.get('bbox_max')
-            if bmin is not None and bmax is not None and len(bmin) == 3 and len(bmax) == 3:
-                closest = np.clip(
-                    sphere_ifc_mm,
-                    np.array(bmin, dtype=np.float64),
-                    np.array(bmax, dtype=np.float64),
-                )
-                outside = float(np.sum((closest - sphere_ifc_mm) ** 2)) > sphere_r_mm ** 2
-            else:
-                ec = np.array(c_mm, dtype=np.float64)
-                outside = float(np.sum((ec - sphere_ifc_mm) ** 2)) > sphere_r_mm ** 2
-            if outside:
+            if not _element_in_sphere(e):
                 continue
-            footprint = _wall_footprint(c_mm, e.get('bbox_min'), e.get('bbox_max'))
+            footprint = _element_footprint(e, c_mm) & in_sphere
             if e.get('robot_side'):
-                red_mask |= footprint & in_sphere
+                red_mask |= footprint
             else:
-                added = int((footprint & in_sphere).sum())
+                added = int(footprint.sum())
                 if added > 0:
                     self.get_logger().info(
                         f'  orange {e.get("id")} {e.get("name")}: +{added} pts')
-                orange_mask |= footprint & in_sphere
+                orange_mask |= footprint
 
-        # 3) Blue — selected element's footprint on the wall surface.
+        # 3) Blue — selected element's penetration footprint on the wall surface.
         for e in (self._drill_elements or []):
             if e.get('id') == selected_id:
                 penet = e.get('penetration') or {}
                 pc = penet.get('center')
                 if pc and len(pc) == 3:
-                    blue_mask |= _wall_footprint(
-                        pc, e.get('bbox_min'), e.get('bbox_max')) & in_sphere
+                    pa = wall_pts_ifc_mm[:, ax_a] - float(pc[ax_a])
+                    pb = wall_pts_ifc_mm[:, ax_b] - float(pc[ax_b])
+                    shape = e.get('shapeType', 'other')
+                    if shape == 'cylindrical' and penet.get('radius') is not None:
+                        r = float(penet['radius'])
+                        footprint = (pa ** 2 + pb ** 2) <= r ** 2
+                    elif shape == 'rectangular':
+                        sizes = [penet.get('sizeX'), penet.get('sizeY'), penet.get('sizeZ')]
+                        if all(s is not None for s in sizes):
+                            footprint = (
+                                (np.abs(pa) <= float(sizes[ax_a]) / 2.0)
+                                & (np.abs(pb) <= float(sizes[ax_b]) / 2.0)
+                            )
+                        else:
+                            footprint = (np.abs(pa) <= 150.0) & (np.abs(pb) <= 150.0)
+                    else:  # 'other' — bbox fallback
+                        bmin = e.get('bbox_min')
+                        bmax = e.get('bbox_max')
+                        if bmin and bmax and len(bmin) == 3 and len(bmax) == 3:
+                            half_a = (float(bmax[ax_a]) - float(bmin[ax_a])) / 2.0
+                            half_b = (float(bmax[ax_b]) - float(bmin[ax_b])) / 2.0
+                        else:
+                            half_a = half_b = 150.0
+                        footprint = (np.abs(pa) <= half_a) & (np.abs(pb) <= half_b)
+                    blue_mask |= footprint & in_sphere
                 break
 
         # Apply priority red > blue > orange > green, then collapse into one
