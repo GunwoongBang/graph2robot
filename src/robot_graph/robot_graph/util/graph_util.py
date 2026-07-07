@@ -22,6 +22,8 @@ def _load_queries(path: Path) -> dict[str, str]:
 
 _QUERIES = _load_queries(Path(__file__).parent / 'query_handler.cypher')
 
+_QUERY_BUILDINGS = _QUERIES['QUERY_BUILDINGS']
+_QUERY_STOREYS = _QUERIES['QUERY_STOREYS']
 _QUERY_SPACES = _QUERIES['QUERY_SPACES']
 _QUERY_WALLS = _QUERIES['QUERY_WALLS']
 # _QUERY_OPENINGS = _QUERIES['QUERY_OPENINGS']
@@ -42,6 +44,14 @@ def _run_query(driver: Driver, query: str, limit: int) -> list[dict[str, Any]]:
             }
             for record in result
         ]
+
+
+def query_buildings(driver: Driver, limit: int) -> list[dict[str, Any]]:
+    return _run_query(driver, _QUERY_BUILDINGS, limit)
+
+
+def query_storeys(driver: Driver, limit: int) -> list[dict[str, Any]]:
+    return _run_query(driver, _QUERY_STOREYS, limit)
 
 
 def query_spaces(driver: Driver, limit: int) -> list[dict[str, Any]]:

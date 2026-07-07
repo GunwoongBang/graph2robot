@@ -26,7 +26,15 @@ class DrillContextBuilder(Node):
             String, '/drilling/elements', latched_qos)
         self._context_pub = self.create_publisher(
             String, '/drilling/context', latched_qos)
+        # Task-agnostic scene graph (nodes + edges) for visualisers. Published
+        # here so this node stays the single consumer of the raw /ifc/* model.
+        self._scene_graph_pub = self.create_publisher(
+            String, '/scene_graph', latched_qos)
         # Subscribers
+        self.create_subscription(
+            String, '/ifc/buildings', self._on_buildings, latched_qos)
+        self.create_subscription(
+            String, '/ifc/storeys', self._on_storeys, latched_qos)
         self.create_subscription(
             String, '/ifc/walls', self._on_walls, latched_qos)
         self.create_subscription(
@@ -39,12 +47,16 @@ class DrillContextBuilder(Node):
             String, '/task/selected_element', self._on_selected_element, latched_qos)
 
         # Raw IFC entities
+        self._buildings: list[dict] | None = None
+        self._storeys: list[dict] | None = None
         self._walls: list[dict] | None = None
         self._spaces: list[dict] | None = None
         self._layers: list[dict] | None = None
         self._mep_elements: list[dict] | None = None
 
         # Reverse-lookup indexes (rebuilt whenever any /ifc/* topic updates)
+        self._buildings_by_id: dict[str, dict] = {}
+        self._storeys_by_id: dict[str, dict] = {}
         self._walls_by_id: dict[str, dict] = {}
         self._spaces_by_id: dict[str, dict] = {}
         self._layers_by_id: dict[str, dict] = {}
@@ -53,6 +65,28 @@ class DrillContextBuilder(Node):
         self._penet_by_mep: dict[str, dict] = {}
         # mep_id → space_id
         self._space_id_by_mep: dict[str, str] = {}
+        # space_id → storey_id (from storey HAS_SPACE relationships)
+        self._storey_id_by_space: dict[str, str] = {}
+        # storey_id → building_id (from building HAS_STOREY relationships)
+        self._building_id_by_storey: dict[str, str] = {}
+
+    def _on_buildings(self, msg: String) -> None:
+        payload = self._parse(msg, '/ifc/buildings')
+        if payload is None:
+            return
+        self._buildings = payload.get('buildings', [])
+        self.get_logger().info(
+            f'Got /ifc/buildings: {len(self._buildings)} buildings.')
+        self._rebuild_indexes()
+
+    def _on_storeys(self, msg: String) -> None:
+        payload = self._parse(msg, '/ifc/storeys')
+        if payload is None:
+            return
+        self._storeys = payload.get('storeys', [])
+        self.get_logger().info(
+            f'Got /ifc/storeys: {len(self._storeys)} storeys.')
+        self._rebuild_indexes()
 
     def _on_walls(self, msg: String) -> None:
         payload = self._parse(msg, '/ifc/walls')
@@ -92,8 +126,10 @@ class DrillContextBuilder(Node):
                 self._walls, self._spaces, self._layers, self._mep_elements)):
             return
 
-        self._walls_by_id = {w['id']: w for w in self._walls}
+        self._buildings_by_id = {b['id']: b for b in self._buildings or []}
+        self._storeys_by_id = {s['id']: s for s in self._storeys or []}
         self._spaces_by_id = {s['id']: s for s in self._spaces}
+        self._walls_by_id = {w['id']: w for w in self._walls}
         self._layers_by_id = {l['id']: l for l in self._layers}
         self._mep_by_id = {m['id']: m for m in self._mep_elements}
 
@@ -116,9 +152,28 @@ class DrillContextBuilder(Node):
                     if mep_id:
                         self._space_id_by_mep[mep_id] = space['id']
 
+        # space_id → storey_id (from storey entities)
+        self._storey_id_by_space = {}
+        for storey in (self._storeys or []):
+            for rel in (storey.get('relationship') or []):
+                if rel.get('type') == 'has_space':
+                    space_id = rel.get('id')
+                    if space_id:
+                        self._storey_id_by_space[space_id] = storey['id']
+
+        # storey_id → building_id (from building entities)
+        self._building_id_by_storey = {}
+        for building in (self._buildings or []):
+            for rel in (building.get('relationship') or []):
+                if rel.get('type') == 'has_storey':
+                    storey_id = rel.get('id')
+                    if storey_id:
+                        self._building_id_by_storey[storey_id] = building['id']
+
         self.get_logger().info(
             f'Indexes built: {len(self._penet_by_mep)} drillable elements.')
         self._publish_elements()
+        self._publish_scene_graph()
 
     def _publish_elements(self) -> None:
         elements = []
@@ -158,6 +213,90 @@ class DrillContextBuilder(Node):
         self.get_logger().info(
             f'Published {len(elements)} drillable elements on /drilling/elements.')
 
+    def _publish_scene_graph(self) -> None:
+        """Publish the whole model as a render-ready node/edge graph.
+
+        Every node carries a resolved centre in the IFC frame (mm): spaces use
+        their centroid, walls/mep their centre, and storey/building centres are
+        derived as the centroid of their children. Edges flatten the graph
+        relationships. Visualisers consume this instead of the raw /ifc/* model.
+        """
+        centers: dict[str, list[float]] = {}
+        nodes: list[dict] = []
+
+        def add_node(node_id: str, ntype: str, center, name) -> None:
+            if not node_id or not center or len(center) != 3:
+                return
+            centers[node_id] = list(center)
+            nodes.append({
+                'id': node_id,
+                'type': ntype,
+                'name': name,
+                'center': list(center),
+            })
+
+        # Leaf geometry first so storey/building centroids can reference it.
+        for s in self._spaces:
+            attrs = s.get('attributes') or {}
+            add_node(s['id'], 'space', attrs.get('centroid'), attrs.get('name'))
+        for w in self._walls:
+            attrs = w.get('attributes') or {}
+            add_node(w['id'], 'wall', attrs.get('center'), attrs.get('name'))
+        for m in self._mep_elements:
+            attrs = m.get('attributes') or {}
+            add_node(m['id'], 'mep', attrs.get('center'), attrs.get('name'))
+        for st in (self._storeys or []):
+            attrs = st.get('attributes') or {}
+            add_node(st['id'], 'storey',
+                     self._children_centroid(st, 'has_space', centers),
+                     attrs.get('name'))
+        for b in (self._buildings or []):
+            attrs = b.get('attributes') or {}
+            add_node(b['id'], 'building',
+                     self._children_centroid(b, 'has_storey', centers),
+                     attrs.get('name'))
+
+        # Flatten the hierarchy + adjacency relationships into edges.
+        edges: list[dict] = []
+        for b in (self._buildings or []):
+            for rel in (b.get('relationship') or []):
+                if rel.get('type') == 'has_storey' and rel.get('id'):
+                    edges.append({'type': 'has_storey',
+                                  'source': b['id'], 'target': rel['id']})
+        for st in (self._storeys or []):
+            for rel in (st.get('relationship') or []):
+                if rel.get('type') == 'has_space' and rel.get('id'):
+                    edges.append({'type': 'has_space',
+                                  'source': st['id'], 'target': rel['id']})
+        for s in self._spaces:
+            for rel in (s.get('relationship') or []):
+                rtype = rel.get('type')
+                if rtype in ('bounded_by', 'hosts') and rel.get('id'):
+                    edges.append({'type': rtype,
+                                  'source': s['id'], 'target': rel['id']})
+
+        payload = {'nodes': nodes, 'edges': edges}
+        msg = String()
+        msg.data = json.dumps(payload)
+        self._scene_graph_pub.publish(msg)
+        self.get_logger().info(
+            f'Published scene graph: {len(nodes)} nodes, {len(edges)} edges '
+            f'on /scene_graph.')
+
+    def _children_centroid(
+            self, node: dict, rel_type: str,
+            centers: dict[str, list[float]]) -> list[float] | None:
+        """Mean centre of a node's children reachable via rel_type."""
+        pts = [
+            centers[rel['id']]
+            for rel in (node.get('relationship') or [])
+            if rel.get('type') == rel_type and rel.get('id') in centers
+        ]
+        if not pts:
+            return None
+        n = len(pts)
+        return [sum(p[i] for p in pts) / n for i in range(3)]
+
     def _on_selected_element(self, msg: String) -> None:
         payload = self._parse(msg, '/task/selected_element')
         if payload is None:
@@ -176,8 +315,12 @@ class DrillContextBuilder(Node):
         nearby = context['nearby_elements']
         n_robot = sum(1 for e in nearby if e['robot_side'])
         n_far = len(nearby) - n_robot
+        storey = context['storey']
+        building = context['building']
         self.get_logger().info(
             f'Published /drilling/context for MEP {mep_id}: '
+            f'building={building["id"] if building else None}, '
+            f'storey={storey["id"] if storey else None}, '
             f'wall={context["wall"]["id"]}, '
             f'{len(context["layers"])} layers, '
             f'wall_thickness={context["wall_thickness_mm"]:.1f} mm, '
@@ -241,6 +384,11 @@ class DrillContextBuilder(Node):
         nearby_elements = self._get_nearby_elements(
             wall_id, robot_space_id, mep_id)
 
+        # Spatial hierarchy: space → storey → building (from HAS_SPACE / HAS_STOREY).
+        storey_id = self._storey_id_by_space.get(space_id)
+        building_id = (
+            self._building_id_by_storey.get(storey_id) if storey_id else None)
+
         return {
             'element': {
                 'id': mep_id,
@@ -276,9 +424,20 @@ class DrillContextBuilder(Node):
             'layers': ordered_layers,
             'wall_thickness_mm': wall_thickness_mm,
             'drill_depth_mm': drill_depth_mm,
+            'space_id': space_id,
+            'storey': self._node_info(self._storeys_by_id, storey_id),
+            'building': self._node_info(self._buildings_by_id, building_id),
             'robot_space_id': robot_space_id,
             'nearby_elements': nearby_elements,
         }
+
+    def _node_info(self, index: dict[str, dict], node_id: str | None) -> dict | None:
+        """Build an {id, name} summary for a building/storey, or None if unknown."""
+        if node_id is None:
+            return None
+        node = index.get(node_id)
+        name = (node.get('attributes') or {}).get('name') if node else None
+        return {'id': node_id, 'name': name}
 
     def _compute_facing(self, wall: dict, space_id: str) -> tuple[int, float, list[float]] | None:
         attrs = wall.get('attributes') or {}
@@ -352,7 +511,8 @@ class DrillContextBuilder(Node):
         """
         nearby: list[dict] = []
         seen_ids: set[str] = {selected_mep_id}
-        robot_side_val = self._get_bounded_by_side(robot_space_id, wall_id) if robot_space_id else None
+        robot_side_val = self._get_bounded_by_side(
+            robot_space_id, wall_id) if robot_space_id else None
         for space_id, space in self._spaces_by_id.items():
             space_side_val = None
             for r in (space.get('relationship') or []):

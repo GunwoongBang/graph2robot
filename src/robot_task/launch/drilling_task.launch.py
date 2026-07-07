@@ -3,6 +3,13 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
+    matrix_publisher_node = Node(
+        package='robot_task',
+        executable='matrix_publisher',
+        name='matrix_publisher',
+        output='screen',
+    )
+
     task_manager_node = Node(
         package='robot_task',
         namespace='drilling_task',
@@ -28,6 +35,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        matrix_publisher_node,
         task_manager_node,
         drill_context_builder_node,
         drill_executor_node,

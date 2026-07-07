@@ -30,6 +30,14 @@ def generate_launch_description() -> LaunchDescription:
         output='screen',
     )
 
+    scene_graph_builder_node = Node(
+        package='robot_rviz',
+        namespace='scene_graph',
+        executable='scene_graph_builder',
+        name='scene_graph_builder',
+        output='screen',
+    )
+
     task_distributor_node = Node(
         package='robot_rviz',
         namespace='robot_rviz',
@@ -64,6 +72,7 @@ def generate_launch_description() -> LaunchDescription:
 
     return LaunchDescription([
         pointcloud_publisher_node,
+        scene_graph_builder_node,
         task_distributor_node,
         task_representer_node,
         rviz,

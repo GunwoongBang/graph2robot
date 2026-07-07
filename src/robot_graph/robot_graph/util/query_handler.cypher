@@ -1,3 +1,35 @@
+-- name: QUERY_BUILDINGS
+MATCH (b:Building)
+OPTIONAL MATCH (b)-[:HAS_STOREY]->(st:Storey)
+WITH b,
+     collect(CASE WHEN st IS NULL THEN NULL ELSE {
+         type: 'has_storey', id: st.id
+     } END) AS storey_raw
+RETURN b.id AS id,
+       'IfcBuilding' AS type,
+       {
+           name: b.name
+       } AS attributes,
+       [x IN storey_raw WHERE x IS NOT NULL] AS relationship
+ORDER BY b.name
+LIMIT $limit
+
+-- name: QUERY_STOREYS
+MATCH (st:Storey)
+OPTIONAL MATCH (st)-[:HAS_SPACE]->(s:Space)
+WITH st,
+     collect(CASE WHEN s IS NULL THEN NULL ELSE {
+         type: 'has_space', id: s.id
+     } END) AS space_raw
+RETURN st.id AS id,
+       'IfcBuildingStorey' AS type,
+       {
+           name: st.name
+       } AS attributes,
+       [x IN space_raw WHERE x IS NOT NULL] AS relationship
+ORDER BY st.name
+LIMIT $limit
+
 -- name: QUERY_SPACES
 MATCH (s:Space)
 OPTIONAL MATCH (s)-[b:BOUNDED_BY]->(w:Wall)
@@ -12,7 +44,13 @@ WITH s, wall_raw,
      } END) AS mep_raw
 RETURN s.id AS id,
        'IfcSpace' AS type,
-       {} AS attributes,
+       {
+           name:     s.name,
+           longName: s.longName,
+           centroid: s.centroid,
+           bbox_min: s.bbox_min,
+           bbox_max: s.bbox_max
+       } AS attributes,
        [x IN wall_raw WHERE x IS NOT NULL] +
        [x IN mep_raw  WHERE x IS NOT NULL] AS relationship
 ORDER BY s.name

@@ -8,6 +8,8 @@ from rclpy.node import Node
 from std_srvs.srv import Trigger
 
 from .util import (
+    query_buildings,
+    query_storeys,
     query_spaces,
     query_walls,
     query_layers,
@@ -45,6 +47,10 @@ class GraphServer(Node):
                     f'Failed to connect to Neo4j at {uri}: {exc}.')
 
         # Servers
+        self._building_srv = self.create_service(
+            Trigger, '/graph/list_buildings', self._handle_list_buildings)
+        self._storey_srv = self.create_service(
+            Trigger, '/graph/list_storeys', self._handle_list_storeys)
         self._space_srv = self.create_service(
             Trigger, '/graph/list_spaces', self._handle_list_spaces)
         self._wall_srv = self.create_service(
@@ -53,6 +59,48 @@ class GraphServer(Node):
             Trigger, '/graph/list_layers', self._handle_list_layers)
         self._mep_element_srv = self.create_service(
             Trigger, '/graph/list_mep_elements', self._handle_list_mep_elements)
+
+    def _handle_list_buildings(
+            self, _request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:
+        if self.driver is None:
+            response.success = False
+            response.message = 'Neo4j driver is not connected.'
+            return response
+
+        try:
+            buildings = query_buildings(self.driver, self._query_limit)
+        except Exception as exc:
+            self.get_logger().error(f'Failed to query buildings: {exc}')
+            response.success = False
+            response.message = f'Query failed: {exc}'
+            return response
+
+        response.success = True
+        response.message = json.dumps(buildings)
+        self.get_logger().info(
+            f'Returned {len(buildings)} buildings to client.')
+        return response
+
+    def _handle_list_storeys(
+            self, _request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:
+        if self.driver is None:
+            response.success = False
+            response.message = 'Neo4j driver is not connected.'
+            return response
+
+        try:
+            storeys = query_storeys(self.driver, self._query_limit)
+        except Exception as exc:
+            self.get_logger().error(f'Failed to query storeys: {exc}')
+            response.success = False
+            response.message = f'Query failed: {exc}'
+            return response
+
+        response.success = True
+        response.message = json.dumps(storeys)
+        self.get_logger().info(
+            f'Returned {len(storeys)} storeys to client.')
+        return response
 
     def _handle_list_spaces(
             self, _request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:

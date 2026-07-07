@@ -35,6 +35,7 @@ setup(
     entry_points={
         'console_scripts': [
             'pointcloud_publisher=robot_rviz.pointcloud_publisher:main',
+            'scene_graph_builder=robot_rviz.scene_graph_builder:main',
             'task_distributor=robot_rviz.task_distributor:main',
             'task_representer=robot_rviz.task_representer:main',
         ],
