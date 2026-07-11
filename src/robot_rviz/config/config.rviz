@@ -5,8 +5,7 @@ Panels:
     Property Tree Widget:
       Expanded:
         - /Status1
-        - /MotionPlanning1
-        - /MotionPlanning1/Scene Geometry1
+        - /SceneGraph1/Namespaces1
         - /MotionPlanning1/Planning Request1
       Splitter Ratio: 0.5076586604118347
     Tree Height: 213
@@ -43,7 +42,7 @@ Visualization Manager:
       Plane Cell Count: 10
       Reference Frame: <Fixed Frame>
       Value: true
-    - Alpha: 1
+    - Alpha: 0.10000000149011612
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
         Max Value: 2.4518041610717773
@@ -124,7 +123,16 @@ Visualization Manager:
       Enabled: true
       Name: SceneGraph
       Namespaces:
-        {}
+        edges/bounded_by: true
+        edges/has_space: true
+        edges/has_storey: true
+        edges/hosts: true
+        labels: false
+        nodes/building: true
+        nodes/mep: false
+        nodes/space: true
+        nodes/storey: true
+        nodes/wall: true
       Topic:
         Depth: 5
         Durability Policy: Transient Local
@@ -473,25 +481,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 3.024956703186035
+      Distance: 16.88446044921875
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 3.104903221130371
-        Y: 0.8281093835830688
-        Z: 0.3877617120742798
+        X: 1.0467722415924072
+        Y: 0.16552101075649261
+        Z: 0.8530497550964355
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.7397971749305725
+      Pitch: 0.6547982692718506
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz_default_plugins)
-      Yaw: 0.8922302722930908
+      Yaw: 5.165411472320557
     Saved: ~
 Window Geometry:
   Displays:
