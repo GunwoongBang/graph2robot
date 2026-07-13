@@ -18,8 +18,8 @@ TYPE_STYLE = {
     'building': (ColorRGBA(r=0.75, g=0.30, b=0.90, a=0.9), 0.3),
     'storey':   (ColorRGBA(r=0.20, g=0.75, b=0.95, a=0.9), 0.3),
     'space':    (ColorRGBA(r=0.30, g=0.85, b=0.40, a=0.9), 0.3),
-    'wall':     (ColorRGBA(r=0.85, g=0.85, b=0.85, a=0.9), 0.3),
-    'mep':      (ColorRGBA(r=1.00, g=0.55, b=0.10, a=0.9), 0.3),
+    'wall':     (ColorRGBA(r=0.85, g=0.85, b=0.85, a=0.9), 0.2),
+    'mep':      (ColorRGBA(r=1.00, g=0.55, b=0.10, a=0.9), 0.1),
 }
 
 # Edge (relationship) styling: relationship type → colour.

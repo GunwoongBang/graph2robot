@@ -17,6 +17,8 @@ from sensor_msgs.msg import PointCloud2, PointField
 from sensor_msgs_py import point_cloud2
 from std_msgs.msg import String
 
+from robot_validation.validation_log import ValidationLog
+
 # With UR5e's URDF and LLM, it can be more generalized
 SPHERE_RADIUS = 1.00  # meters; UR5e 850mm reach + 150mm drill tip ≈ 1.0m max.
 CENTER_Z_OFFSET = 0.529  # meters; height where the shoulder joint sits
@@ -65,6 +67,7 @@ class TaskRepresenter(Node):
         self._target_position: dict | None = None
         self._drill_context: dict | None = None
         self._drill_elements: list[dict] | None = None
+        self._vlog = ValidationLog()
 
     def _load_wall_index_map(self) -> dict[str, np.ndarray]:
         if not self._csv_path.exists():
@@ -164,7 +167,7 @@ class TaskRepresenter(Node):
         result = self._compute_zones()
         if result is None:
             return
-        kept_pts, categories, totals = result
+        kept_pts, categories, totals, classification = result
         self._publish_representation(kept_pts, categories)
         self._publish_zones(kept_pts, categories)
         red_n, orange_n, blue_n, green_n = totals
@@ -174,6 +177,35 @@ class TaskRepresenter(Node):
             f'+ /task/zones (wall={wall_id}, '
             f'green={green_n}, orange={orange_n}, '
             f'blue={blue_n}, red={red_n}).')
+        self._log_classification(classification)
+
+    # ── Validation: Section B[0] Hazard zone classification ───────────────────
+
+    def _log_classification(self, cls: dict) -> None:
+        v = self._vlog
+        elems = cls['elements']
+        selected_id = cls['selected_id']
+        v.event('Hazard-aware planning validation')
+        v.header(f'[0] Hazard zone classification (target {selected_id})')
+        v.line(f'Working sphere       : center={ValidationLog.xyz(cls["center"], nd=3)} '
+               f'| radius= {ValidationLog.mm(cls["radius_mm"])} mm')
+        v.line(f'MEP elements in scope: {len(elems)}')
+        v.line('Per element (classified vs. BIM ground truth):')
+        counts = {'DANGER': 0, 'LATENT': 0, 'TARGET': 0, 'OUT_OF_ZONE': 0}
+        correct = 0
+        for e in elems:
+            classified = e['classified']
+            truth = e['truth']
+            match = classified == truth
+            correct += 1 if match else 0
+            counts[classified] = counts.get(classified, 0) + 1
+            v.line(f'  elem {e["id"]} | class={classified.ljust(11)} | '
+                   f'truth={truth.ljust(11)} | match={"YES" if match else "NO"}')
+        v.line(f'Zone counts          : danger={counts["DANGER"]} | '
+               f'latent={counts["LATENT"]} | target={counts["TARGET"]} | '
+               f'out_of_zone={counts["OUT_OF_ZONE"]}')
+        v.line(f'Classification acc.  : {correct} / {len(elems)} correct')
+        v.rule()
 
     def _compute_zones(self):
         # IFC -> cloud frame for the sphere center.
@@ -354,6 +386,55 @@ class TaskRepresenter(Node):
                     blue_mask |= footprint & in_sphere
                 break
 
+        # ── Validation: per-element hazard classification (Section B[0]) ──────
+        # Classify every in-scope element into the thesis vocabulary and compare
+        # against a ground truth derived directly from BIM geometry.
+        #   classified : what the point-based zone builder produced for the
+        #                element (needs scan points under its footprint).
+        #   truth      : selected -> TARGET; element volume outside the working
+        #                sphere -> OUT_OF_ZONE; else robot-side -> DANGER,
+        #                behind-wall -> LATENT.
+        # A mismatch flags an element that is geometrically in the sphere but has
+        # no wall-scan points under it (so the classifier cannot voxelise it).
+        classification = {
+            'center': [float(center[0]), float(center[1]), float(center[2])],
+            'radius_mm': SPHERE_RADIUS * 1000.0,
+            'selected_id': selected_id,
+            'elements': [],
+        }
+        for e in self._drill_context.get('nearby_elements', []):
+            c_mm = e.get('center')
+            if c_mm is None or len(c_mm) != 3:
+                continue
+            in_sph = _element_in_sphere(e)
+            footprint_pts = int((_element_footprint(e, c_mm) & in_sphere).sum()) \
+                if in_sph else 0
+            robot_side = bool(e.get('robot_side'))
+            if in_sph and robot_side:
+                truth = 'DANGER'
+            elif in_sph and not robot_side:
+                truth = 'LATENT'
+            else:
+                truth = 'OUT_OF_ZONE'
+            if footprint_pts > 0 and robot_side:
+                classified = 'DANGER'
+            elif footprint_pts > 0 and not robot_side:
+                classified = 'LATENT'
+            else:
+                classified = 'OUT_OF_ZONE'
+            classification['elements'].append({
+                'id': e.get('id'),
+                'classified': classified,
+                'truth': truth,
+            })
+        # The selected element is the drill TARGET; classified TARGET when its
+        # own penetration footprint produced points on the wall.
+        classification['elements'].append({
+            'id': selected_id,
+            'classified': 'TARGET' if bool(blue_mask.any()) else 'OUT_OF_ZONE',
+            'truth': 'TARGET',
+        })
+
         # Apply priority red > blue > orange > green, then collapse into one
         # uint8 category per point.
         blue_mask &= ~red_mask
@@ -369,7 +450,7 @@ class TaskRepresenter(Node):
         categories[red_mask[keep_mask]] = CATEGORY_RED
         totals = (int(red_mask.sum()), int(orange_mask.sum()),
                   int(blue_mask.sum()), int(green_mask.sum()))
-        return kept_pts, categories, totals
+        return kept_pts, categories, totals, classification
 
     def _publish_representation(
             self, kept_pts: np.ndarray, categories: np.ndarray) -> None:

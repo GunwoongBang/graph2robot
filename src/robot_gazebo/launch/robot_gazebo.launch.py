@@ -2,8 +2,9 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from moveit_configs_utils import MoveItConfigsBuilder
@@ -11,6 +12,13 @@ from moveit_configs_utils import MoveItConfigsBuilder
 
 def generate_launch_description() -> LaunchDescription:
     package_share = get_package_share_directory('robot_gazebo')
+
+    # Section B ON/OFF baseline: launch with hazard_aware:=false to disable the
+    # latent-hazard halt and the danger collision voxels (validation still logs).
+    hazard_aware = LaunchConfiguration('hazard_aware')
+    hazard_aware_arg = DeclareLaunchArgument(
+        'hazard_aware', default_value='true',
+        description='Enable hazard-aware planning (halt + danger voxels).')
 
     os.environ['GAZEBO_MODEL_PATH'] = os.pathsep.join(filter(None, [
         os.environ.get('GAZEBO_MODEL_PATH', ''),
@@ -113,10 +121,13 @@ def generate_launch_description() -> LaunchDescription:
         executable='robot_motion_planner',
         name='robot_motion_planner',
         output='screen',
-        parameters=[moveit_config.to_dict(), {'use_sim_time': True}],
+        parameters=[moveit_config.to_dict(), {'use_sim_time': True},
+                    {'hazard_aware': ParameterValue(
+                        hazard_aware, value_type=bool)}],
     )
 
     return LaunchDescription([
+        hazard_aware_arg,
         gazebo,
         robot_state_publisher,
         move_group,
