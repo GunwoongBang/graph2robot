@@ -177,9 +177,18 @@ class DrillContextBuilder(Node):
 
     def _publish_elements(self) -> None:
         elements = []
+        embedded = 0
         for mep_id, penet_rel in self._penet_by_mep.items():
             mep = self._mep_by_id.get(mep_id)
             if mep is None:
+                continue
+            # Elements that penetrate a wall but are hosted by no space are
+            # embedded inside the wall, not through-penetrations. They cannot be
+            # drill targets (_build_context requires a hosting space), so they
+            # must not get an interactive marker. They are still surfaced as
+            # behind-wall (orange) concealed obstacles via _get_nearby_elements.
+            if mep_id not in self._space_id_by_mep:
+                embedded += 1
                 continue
             attrs = mep.get('attributes') or {}
             elements.append({
@@ -211,7 +220,8 @@ class DrillContextBuilder(Node):
         msg.data = json.dumps(payload)
         self._elements_pub.publish(msg)
         self.get_logger().info(
-            f'Published {len(elements)} drillable elements on /drilling/elements.')
+            f'Published {len(elements)} drillable elements on /drilling/elements '
+            f'({embedded} wall-embedded element(s) skipped as non-targets).')
 
     def _publish_scene_graph(self) -> None:
         """Publish the whole model as a render-ready node/edge graph.
@@ -504,10 +514,11 @@ class DrillContextBuilder(Node):
         return None
 
     def _get_nearby_elements(self, wall_id: str, robot_space_id: str | None, selected_mep_id: str) -> list[dict]:
-        """All MEP elements hosted in spaces that bound this wall.
+        """MEP elements near this wall: hosted in a bounding space, or embedded
+        inside the wall itself.
 
         robot_side=True  → element is on the same side of the wall as the robot (→ RED in RViz)
-        robot_side=False → element is behind the wall                            (→ ORANGE in RViz)
+        robot_side=False → element is behind the wall / embedded inside it       (→ ORANGE in RViz)
         """
         nearby: list[dict] = []
         seen_ids: set[str] = {selected_mep_id}
@@ -551,10 +562,43 @@ class DrillContextBuilder(Node):
                     'bbox_max': attrs.get('bbox_max'),
                     'robot_side': robot_side,
                 })
+
+        # Elements embedded inside this wall: they penetrate the wall but are
+        # hosted by no space, so the space→hosts sweep above misses them. Treat
+        # them as behind-wall (orange) concealed hazards on the drilling path.
+        embedded = 0
+        for mep_id, penet_rel in self._penet_by_mep.items():
+            if penet_rel.get('wall_id') != wall_id:
+                continue
+            if mep_id in seen_ids or mep_id in self._space_id_by_mep:
+                continue
+            mep = self._mep_by_id.get(mep_id)
+            if mep is None:
+                continue
+            seen_ids.add(mep_id)
+            attrs = mep.get('attributes') or {}
+            nearby.append({
+                'id': mep_id,
+                'name': attrs.get('name'),
+                'center': attrs.get('center'),
+                'shapeType': attrs.get('shapeType'),
+                'direction': attrs.get('direction'),
+                'radius': attrs.get('radius'),
+                'length': attrs.get('length'),
+                'sizeX': attrs.get('sizeX'),
+                'sizeY': attrs.get('sizeY'),
+                'sizeZ': attrs.get('sizeZ'),
+                'bbox_min': attrs.get('bbox_min'),
+                'bbox_max': attrs.get('bbox_max'),
+                'robot_side': False,
+            })
+            embedded += 1
+
         self.get_logger().info(
             f'Nearby elements for wall {wall_id}: {len(nearby)} '
             f'({sum(1 for e in nearby if e["robot_side"])} robot-side, '
-            f'{sum(1 for e in nearby if not e["robot_side"])} far-side).')
+            f'{sum(1 for e in nearby if not e["robot_side"])} far-side, '
+            f'{embedded} wall-embedded).')
         return nearby
 
     def _parse(self, msg: String, topic: str) -> dict | None:

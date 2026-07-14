@@ -13,8 +13,6 @@ log/
 __pycache__/
 .pytest_cache/
 
-# Template
-template/
-
-# Image files
+# Excluded files
 images/
+output/
