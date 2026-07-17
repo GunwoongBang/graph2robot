@@ -30,7 +30,6 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'task_manager=robot_task.task_manager:main',
             'matrix_publisher=robot_task.matrix_publisher:main',
             'task_generator=robot_task.task_generator:main',
             'task_evaluator=robot_task.task_evaluator:main',

@@ -8,7 +8,9 @@ from rclpy.qos import (
     QoSProfile,
     ReliabilityPolicy,
 )
+from rclpy.task import Future
 from std_msgs.msg import String
+from std_srvs.srv import Trigger
 
 
 class DrillContextBuilder(Node):
@@ -21,28 +23,22 @@ class DrillContextBuilder(Node):
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
         )
+        # Clients
+        self._building_cli = self.create_client(
+            Trigger, '/graph/list_buildings')
+        self._storey_cli = self.create_client(Trigger, '/graph/list_storeys')
+        self._space_cli = self.create_client(Trigger, '/graph/list_spaces')
+        self._wall_cli = self.create_client(Trigger, '/graph/list_walls')
+        self._layer_cli = self.create_client(Trigger, '/graph/list_layers')
+        self._mep_cli = self.create_client(Trigger, '/graph/list_mep_elements')
         # Publishers
         self._elements_pub = self.create_publisher(
             String, '/drilling/elements', latched_qos)
         self._context_pub = self.create_publisher(
             String, '/drilling/context', latched_qos)
-        # Task-agnostic scene graph (nodes + edges) for visualisers. Published
-        # here so this node stays the single consumer of the raw /ifc/* model.
         self._scene_graph_pub = self.create_publisher(
             String, '/scene_graph', latched_qos)
         # Subscribers
-        self.create_subscription(
-            String, '/ifc/buildings', self._on_buildings, latched_qos)
-        self.create_subscription(
-            String, '/ifc/storeys', self._on_storeys, latched_qos)
-        self.create_subscription(
-            String, '/ifc/walls', self._on_walls, latched_qos)
-        self.create_subscription(
-            String, '/ifc/spaces', self._on_spaces, latched_qos)
-        self.create_subscription(
-            String, '/ifc/layers', self._on_layers, latched_qos)
-        self.create_subscription(
-            String, '/ifc/mep_elements', self._on_mep_elements, latched_qos)
         self.create_subscription(
             String, '/task/selected_element', self._on_selected_element, latched_qos)
 
@@ -54,7 +50,7 @@ class DrillContextBuilder(Node):
         self._layers: list[dict] | None = None
         self._mep_elements: list[dict] | None = None
 
-        # Reverse-lookup indexes (rebuilt whenever any /ifc/* topic updates)
+        # Reverse-lookup indexes (rebuilt as each graph-server response lands)
         self._buildings_by_id: dict[str, dict] = {}
         self._storeys_by_id: dict[str, dict] = {}
         self._walls_by_id: dict[str, dict] = {}
@@ -70,55 +66,89 @@ class DrillContextBuilder(Node):
         # storey_id → building_id (from building HAS_STOREY relationships)
         self._building_id_by_storey: dict[str, str] = {}
 
-    def _on_buildings(self, msg: String) -> None:
-        payload = self._parse(msg, '/ifc/buildings')
-        if payload is None:
+    def request_graph_data(self, wait_timeout_sec: float = 10.0) -> None:
+        for cli, cb, name in [
+            (self._building_cli, self._on_buildings, '/graph/list_buildings'),
+            (self._storey_cli, self._on_storeys, '/graph/list_storeys'),
+            (self._space_cli, self._on_spaces, '/graph/list_spaces'),
+            (self._wall_cli, self._on_walls, '/graph/list_walls'),
+            (self._layer_cli, self._on_layers, '/graph/list_layers'),
+            (self._mep_cli, self._on_mep_elements, '/graph/list_mep_elements'),
+        ]:
+            if not cli.wait_for_service(timeout_sec=wait_timeout_sec):
+                self.get_logger().error(
+                    f'Service {name} unavailable after {wait_timeout_sec}s; skipping.')
+                continue
+            cli.call_async(Trigger.Request()).add_done_callback(cb)
+
+    def _parse_response(self, future: Future, service: str) -> list | None:
+        try:
+            result = future.result()
+        except Exception as exc:
+            self.get_logger().error(f'{service} call failed: {exc}')
+            return None
+        if result is None or not result.success:
+            reason = result.message if result is not None else 'no result'
+            self.get_logger().error(f'{service} returned failure: {reason}')
+            return None
+        try:
+            return json.loads(result.message)
+        except json.JSONDecodeError as exc:
+            self.get_logger().error(f'Invalid JSON from {service}: {exc}')
+            return None
+
+    def _on_buildings(self, future: Future) -> None:
+        data = self._parse_response(future, '/graph/list_buildings')
+        if data is None:
             return
-        self._buildings = payload.get('buildings', [])
+        self._buildings = data
         self.get_logger().info(
-            f'Got /ifc/buildings: {len(self._buildings)} buildings.')
+            f'Got {len(self._buildings)} buildings from graph server.')
         self._rebuild_indexes()
 
-    def _on_storeys(self, msg: String) -> None:
-        payload = self._parse(msg, '/ifc/storeys')
-        if payload is None:
+    def _on_storeys(self, future: Future) -> None:
+        data = self._parse_response(future, '/graph/list_storeys')
+        if data is None:
             return
-        self._storeys = payload.get('storeys', [])
+        self._storeys = data
         self.get_logger().info(
-            f'Got /ifc/storeys: {len(self._storeys)} storeys.')
+            f'Got {len(self._storeys)} storeys from graph server.')
         self._rebuild_indexes()
 
-    def _on_walls(self, msg: String) -> None:
-        payload = self._parse(msg, '/ifc/walls')
-        if payload is None:
+    def _on_walls(self, future: Future) -> None:
+        data = self._parse_response(future, '/graph/list_walls')
+        if data is None:
             return
-        self._walls = payload.get('walls', [])
-        self.get_logger().info(f'Got /ifc/walls: {len(self._walls)} walls.')
-        self._rebuild_indexes()
-
-    def _on_spaces(self, msg: String) -> None:
-        payload = self._parse(msg, '/ifc/spaces')
-        if payload is None:
-            return
-        self._spaces = payload.get('spaces', [])
-        self.get_logger().info(f'Got /ifc/spaces: {len(self._spaces)} spaces.')
-        self._rebuild_indexes()
-
-    def _on_layers(self, msg: String) -> None:
-        payload = self._parse(msg, '/ifc/layers')
-        if payload is None:
-            return
-        self._layers = payload.get('layers', [])
-        self.get_logger().info(f'Got /ifc/layers: {len(self._layers)} layers.')
-        self._rebuild_indexes()
-
-    def _on_mep_elements(self, msg: String) -> None:
-        payload = self._parse(msg, '/ifc/mep_elements')
-        if payload is None:
-            return
-        self._mep_elements = payload.get('mep_elements', [])
+        self._walls = data
         self.get_logger().info(
-            f'Got /ifc/mep_elements: {len(self._mep_elements)} elements.')
+            f'Got {len(self._walls)} walls from graph server.')
+        self._rebuild_indexes()
+
+    def _on_spaces(self, future: Future) -> None:
+        data = self._parse_response(future, '/graph/list_spaces')
+        if data is None:
+            return
+        self._spaces = data
+        self.get_logger().info(
+            f'Got {len(self._spaces)} spaces from graph server.')
+        self._rebuild_indexes()
+
+    def _on_layers(self, future: Future) -> None:
+        data = self._parse_response(future, '/graph/list_layers')
+        if data is None:
+            return
+        self._layers = data
+        self.get_logger().info(
+            f'Got {len(self._layers)} layers from graph server.')
+        self._rebuild_indexes()
+
+    def _on_mep_elements(self, future: Future) -> None:
+        data = self._parse_response(future, '/graph/list_mep_elements')
+        if data is None:
+            return
+        self._mep_elements = data
+        self.get_logger().info(
+            f'Got {len(self._mep_elements)} MEP elements from graph server.')
         self._rebuild_indexes()
 
     def _rebuild_indexes(self) -> None:
@@ -229,7 +259,7 @@ class DrillContextBuilder(Node):
         Every node carries a resolved centre in the IFC frame (mm): spaces use
         their centroid, walls/mep their centre, and storey/building centres are
         derived as the centroid of their children. Edges flatten the graph
-        relationships. Visualisers consume this instead of the raw /ifc/* model.
+        relationships. Visualisers consume this instead of the raw IFC model.
         """
         centers: dict[str, list[float]] = {}
         nodes: list[dict] = []
@@ -248,7 +278,8 @@ class DrillContextBuilder(Node):
         # Leaf geometry first so storey/building centroids can reference it.
         for s in self._spaces:
             attrs = s.get('attributes') or {}
-            add_node(s['id'], 'space', attrs.get('centroid'), attrs.get('name'))
+            add_node(s['id'], 'space', attrs.get(
+                'centroid'), attrs.get('name'))
         for w in self._walls:
             attrs = w.get('attributes') or {}
             add_node(w['id'], 'wall', attrs.get('center'), attrs.get('name'))
@@ -613,6 +644,7 @@ def main() -> None:
     rclpy.init()
     node = DrillContextBuilder()
     try:
+        node.request_graph_data()
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass

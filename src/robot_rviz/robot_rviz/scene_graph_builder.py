@@ -41,7 +41,7 @@ class SceneGraphBuilder(Node):
     builder publishes on /scene_graph. Node centres arrive resolved in the IFC
     frame (mm); this node only transforms them into the world frame and draws
     them as an RViz MarkerArray (spheres + labels + edges). It does not read the
-    raw /ifc/* model, so any task builder can feed the same visualiser.
+    raw IFC model, so any task builder can feed the same visualiser.
     """
 
     def __init__(self) -> None:

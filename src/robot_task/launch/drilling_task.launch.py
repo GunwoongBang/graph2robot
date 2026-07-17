@@ -10,14 +10,6 @@ def generate_launch_description():
         output='screen',
     )
 
-    task_manager_node = Node(
-        package='robot_task',
-        namespace='drilling_task',
-        executable='task_manager',
-        name='task_manager',
-        output='screen',
-    )
-
     drill_context_builder_node = Node(
         package='robot_task',
         namespace='drilling_task',
@@ -36,7 +28,6 @@ def generate_launch_description():
 
     return LaunchDescription([
         matrix_publisher_node,
-        task_manager_node,
         drill_context_builder_node,
         drill_executor_node,
     ])
