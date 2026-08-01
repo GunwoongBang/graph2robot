@@ -12,13 +12,18 @@ flowchart TB
     robot_task["robot_task"]
     robot_rviz["robot_rviz"]
     robot_gazebo["robot_gazebo"]
+    robot_validation["robot_validation"]
 
     Neo4j -->|"exports BIM model"| robot_graph
     robot_graph -->|"serves BIM entities"| robot_task
-    robot_task -->|"drillable elements <br>+ drill plan"| robot_rviz
+    robot_task -->|"drillable elements <br>+ scene graph <br>+ drill plan"| robot_rviz
     robot_task -->|"robot pose <br>+ drill targets"| robot_gazebo
     robot_rviz -->|"user-selected element"| robot_task
     robot_rviz -->|"working-zone hazard map"| robot_gazebo
+
+    robot_task -.->|"metrics"| robot_validation
+    robot_rviz -.->|"metrics"| robot_validation
+    robot_gazebo -.->|"metrics"| robot_validation
 
     classDef extern fill:#374151,stroke:#fbbf24,color:#fff;
     class Neo4j extern;
@@ -32,7 +37,7 @@ Connects to Neo4j and exposes the BIM model as ROS 2 services. Each service retu
 
 | Node | Role |
 |---|---|
-| `graph_server` | Serves `/graph/list_spaces`, `/graph/list_walls`, `/graph/list_layers`, `/graph/list_mep_elements` |
+| `graph_server` | Serves `/graph/list_buildings`, `/graph/list_storeys`, `/graph/list_spaces`, `/graph/list_walls`, `/graph/list_layers`, `/graph/list_mep_elements` |
 
 ---
 
@@ -42,8 +47,8 @@ Transforms raw BIM data into executable task parameters: which wall to drill, wh
 
 | Node | Role |
 |---|---|
-| `task_manager` | Calls graph services on startup; publishes `/ifc/*` topics and `/matrix` |
-| `drill_context_builder` | Builds per-selection drill context (facing, layers, nearby elements) on `/drilling/context` |
+| `matrix_publisher` | Publishes the IFC-to-world transform once on `/matrix` (latched) |
+| `drill_context_builder` | Calls the graph services on startup; publishes `/drilling/elements` and `/scene_graph`, then a per-selection drill context (facing, layers, hierarchy, nearby elements) on `/drilling/context` |
 | `drill_executor` | Computes robot base pose (`/robot/target_position`) and drill-tip target points (`/robot/target_point`) |
 
 ---
@@ -55,6 +60,7 @@ User interface. Loads the point-cloud scan, renders clickable markers on every d
 | Node | Role |
 |---|---|
 | `pointcloud_publisher` | Publishes the scan once on `/cloud` (latched) |
+| `scene_graph_builder` | Renders the `/scene_graph` node/edge graph as an RViz `MarkerArray` |
 | `task_distributor` | Places interactive markers in RViz; publishes `/task/selected_element` on click |
 | `task_representer` | Computes working-sphere zones on the wall; publishes `/task/representation` (RViz) and `/task/zones` (MoveIt) |
 
@@ -78,6 +84,23 @@ Simulation and execution. Populates the Gazebo world with IFC geometry, teleport
 | `world_spawner` | Spawns IFC-derived Gazebo models at the correct world pose |
 | `robot_spawner` | Spawns and teleports the Husky+UR5e; signals `/robot/motion_ready` after each teleport |
 | `robot_motion_planner` | Builds MoveIt collision scene from RED-zone voxels and target wall; plans and executes arm trajectory; stops on depth conflict with behind-wall elements |
+
+Hazard-awareness is a launch-time toggle: `hazard_aware:=false` disables both the latent-hazard halt and the danger collision voxels, giving the OFF baseline for the safety comparison.
+
+---
+
+### [robot_validation](src/robot_validation/)
+
+Shared plain-text logging used to evaluate the system. It is a library, not a node — `robot_task`, `robot_rviz`, and `robot_gazebo` each import `ValidationLog` and append their own metrics to one file, so a full run lands in a single ordered log.
+
+| Section | Emitted by | Content |
+|---|---|---|
+| A[0] | `drill_executor` | Task derivation: derived drill points vs. BIM ground truth |
+| A[1]–A[3] | `robot_motion_planner` | Planning success and time, execution accuracy, sequence outcome |
+| B[0] | `task_representer` | Hazard zone classification vs. BIM ground truth |
+| B[1]–B[3] | `robot_motion_planner` | Front-side collision avoidance, latent hazard halt, ON/OFF safety comparison |
+
+Output goes to stdout and to `src/robot_validation/output/project.log`; set `GRAPH2ROBOT_VALIDATION_LOG` to redirect it.
 
 ## Prerequisites
 
@@ -109,4 +132,13 @@ ros2 launch robot_rviz robot_rviz.launch.py
 
 # Terminal 4 — Simulation + execution
 ros2 launch robot_gazebo robot_gazebo.launch.py
+```
+
+Then click an MEP element's marker in RViz to run a drilling task end to end.
+
+For the OFF baseline, relaunch terminal 4 with the toggle off — or flip it between targets without relaunching:
+
+```bash
+ros2 launch robot_gazebo robot_gazebo.launch.py hazard_aware:=false
+ros2 param set /robot_gazebo/robot_motion_planner hazard_aware false
 ```

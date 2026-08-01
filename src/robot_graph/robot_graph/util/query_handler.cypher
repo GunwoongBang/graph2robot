@@ -6,7 +6,7 @@ WITH b,
          type: 'has_storey', id: st.id
      } END) AS storey_raw
 RETURN b.id AS id,
-       'IfcBuilding' AS type,
+       b.ifcClass AS type,
        {
            name: b.name
        } AS attributes,
@@ -22,7 +22,7 @@ WITH st,
          type: 'has_space', id: s.id
      } END) AS space_raw
 RETURN st.id AS id,
-       'IfcBuildingStorey' AS type,
+       st.ifcClass AS type,
        {
            name: st.name
        } AS attributes,
@@ -37,13 +37,13 @@ WITH s,
      collect(CASE WHEN w IS NULL THEN NULL ELSE {
          type: 'bounded_by', id: w.id, side: b.side
      } END) AS wall_raw
-OPTIONAL MATCH (s)-[:HOSTS]->(me:MEPElement)
+OPTIONAL MATCH (s)-[:INTERSECTS]->(me:MEPElement)
 WITH s, wall_raw,
      collect(CASE WHEN me IS NULL THEN NULL ELSE {
-         type: 'hosts', id: me.id
+         type: 'intersects', id: me.id
      } END) AS mep_raw
 RETURN s.id AS id,
-       'IfcSpace' AS type,
+       s.ifcClass AS type,
        {
            name:     s.name,
            longName: s.longName,
@@ -76,7 +76,7 @@ WITH w, layer_raw,
          sizeZ:    p.penetrationSizeZ
      } END) AS penet_raw
 RETURN w.id AS id,
-       'IfcWallStandardCase' AS type,
+       w.ifcClass AS type,
        {
            axis2:          w.axis2,
            center:         w.center,
@@ -92,7 +92,7 @@ LIMIT $limit
 -- name: QUERY_LAYERS
 MATCH (l:Layer)
 RETURN l.id AS id,
-       'IfcMaterialLayer' AS type,
+       l.ifcClass AS type,
        {
            name:       l.name,
            layerIndex: l.layerIndex,
@@ -105,7 +105,7 @@ LIMIT $limit
 -- name: QUERY_MEP_SYSTEMS
 MATCH (ms:MEPSystem)
 RETURN ms.id AS id,
-       'IfcDistributionSystem' AS type,
+       ms.ifcClass AS type,
        {
            name: ms.name
        } AS attributes,
@@ -116,19 +116,19 @@ LIMIT $limit
 -- name: QUERY_MEP_ELEMENTS
 MATCH (me:MEPElement)
 RETURN me.id AS id,
-       'IfcDistributionElement' AS type,
+       me.ifcClass AS type,
        {
            name:      me.name,
            center:    me.center,
-           bbox_min:  me.bbox_min,
-           bbox_max:  me.bbox_max,
            shapeType: me.shapeType,
            direction: me.direction,
            radius:    me.radius,
            length:    me.length,
            sizeX:     me.sizeX,
            sizeY:     me.sizeY,
-           sizeZ:     me.sizeZ
+           sizeZ:     me.sizeZ,
+           bbox_min:  me.bbox_min,
+           bbox_max:  me.bbox_max
        } AS attributes,
        [] AS relationship
 ORDER BY me.name

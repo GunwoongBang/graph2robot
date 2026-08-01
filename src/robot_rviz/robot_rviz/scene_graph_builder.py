@@ -27,7 +27,7 @@ EDGE_STYLE = {
     'has_storey':  ColorRGBA(r=0.75, g=0.30, b=0.90, a=0.5),
     'has_space':   ColorRGBA(r=0.20, g=0.75, b=0.95, a=0.5),
     'bounded_by':  ColorRGBA(r=0.70, g=0.70, b=0.70, a=0.4),
-    'hosts':       ColorRGBA(r=1.00, g=0.55, b=0.10, a=0.4),
+    'intersects':  ColorRGBA(r=1.00, g=0.55, b=0.10, a=0.4),
 }
 EDGE_ORDER = list(EDGE_STYLE.keys())  # stable marker ids per relationship type
 

@@ -177,7 +177,7 @@ class DrillContextBuilder(Node):
         self._space_id_by_mep = {}
         for space in self._spaces:
             for rel in (space.get('relationship') or []):
-                if rel.get('type') == 'hosts':
+                if rel.get('type') == 'intersects':
                     mep_id = rel.get('id')
                     if mep_id:
                         self._space_id_by_mep[mep_id] = space['id']
@@ -312,7 +312,7 @@ class DrillContextBuilder(Node):
         for s in self._spaces:
             for rel in (s.get('relationship') or []):
                 rtype = rel.get('type')
-                if rtype in ('bounded_by', 'hosts') and rel.get('id'):
+                if rtype in ('bounded_by', 'intersects') and rel.get('id'):
                     edges.append({'type': rtype,
                                   'source': s['id'], 'target': rel['id']})
 
@@ -353,20 +353,17 @@ class DrillContextBuilder(Node):
         msg_out = String()
         msg_out.data = json.dumps(context)
         self._context_pub.publish(msg_out)
-        nearby = context['nearby_elements']
-        n_robot = sum(1 for e in nearby if e['robot_side'])
-        n_far = len(nearby) - n_robot
-        storey = context['storey']
-        building = context['building']
+        # Layer stacking order from the robot side (derived in _compute_facing
+        # from the bounded_by `side` and the wall `directionSense`).
         self.get_logger().info(
-            f'Published /drilling/context for MEP {mep_id}: '
-            f'building={building["id"] if building else None}, '
-            f'storey={storey["id"] if storey else None}, '
-            f'wall={context["wall"]["id"]}, '
-            f'{len(context["layers"])} layers, '
-            f'wall_thickness={context["wall_thickness_mm"]:.1f} mm, '
-            f'drill_depth={context["drill_depth_mm"]} mm, '
-            f'nearby={len(nearby)} ({n_robot} robot-side, {n_far} far-side).')
+            f'Layers from robot side for MEP {mep_id} '
+            f'(wall {context["wall"]["id"]}):')
+        for layer in context['layers']:
+            thickness = layer.get('thickness_mm')
+            thickness_str = f'{thickness:.1f} mm' if thickness is not None else 'n/a'
+            self.get_logger().info(
+                f"  layer {layer.get('order')}: {layer.get('name')} "
+                f"({thickness_str})")
 
     def _build_context(self, mep_id: str) -> dict | None:
         mep = self._mep_by_id.get(mep_id)
@@ -568,7 +565,7 @@ class DrillContextBuilder(Node):
                 if robot_side_val else space_id == robot_space_id
             )
             for rel in (space.get('relationship') or []):
-                if rel.get('type') != 'hosts':
+                if rel.get('type') != 'intersects':
                     continue
                 eid = rel.get('id')
                 if not eid or eid in seen_ids:
