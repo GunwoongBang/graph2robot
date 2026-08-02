@@ -36,7 +36,8 @@ class TaskRepresenter(Node):
 
         package_share = Path(get_package_share_directory('robot_rviz'))
         self._csv_path = package_share / 'models' / CSV_FILENAME
-        self._wall_indices: dict[str, np.ndarray] = self._load_wall_index_map()
+        self._wall_indices: dict[str, dict[str, np.ndarray]] = \
+            self._load_wall_index_map()
 
         latched_qos = QoSProfile(
             depth=1,
@@ -69,23 +70,64 @@ class TaskRepresenter(Node):
         self._drill_elements: list[dict] | None = None
         self._vlog = ValidationLog()
 
-    def _load_wall_index_map(self) -> dict[str, np.ndarray]:
+    def _load_wall_index_map(self) -> dict[str, dict[str, np.ndarray]]:
+        """wall_id -> {plane_label: cloud indices}.
+
+        A wall scanned from both rooms contributes two planes, one per face.
+        Keeping them separate lets _compute_zones classify only the face the
+        robot is looking at; bucketing by wall id alone merges them.
+        """
         if not self._csv_path.exists():
             self.get_logger().error(f'CSV not found at {self._csv_path}.')
             return {}
-        buckets: dict[str, list[int]] = {}
+        buckets: dict[str, dict[str, list[int]]] = {}
         with open(self._csv_path, 'r') as f:
             reader = csv.DictReader(f)
             for cloud_idx, row in enumerate(reader):
                 wall_id = row.get('ifc_global_id') or ''
                 if not wall_id:
                     continue
-                buckets.setdefault(wall_id, []).append(cloud_idx)
-        out = {k: np.array(v, dtype=np.int64) for k, v in buckets.items()}
-        total = sum(len(v) for v in out.values())
+                plane = row.get('plane_label') or '_'
+                buckets.setdefault(wall_id, {}).setdefault(
+                    plane, []).append(cloud_idx)
+        out = {
+            wall_id: {p: np.array(v, dtype=np.int64) for p, v in planes.items()}
+            for wall_id, planes in buckets.items()
+        }
+        n_planes = sum(len(p) for p in out.values())
+        total = sum(len(v) for p in out.values() for v in p.values())
         self.get_logger().info(
-            f'Loaded wall->indices map: {len(out)} walls, {total} points.')
+            f'Loaded wall->plane->indices map: {len(out)} walls, '
+            f'{n_planes} planes, {total} points.')
         return out
+
+    def _face_center_ifc_mm(
+            self, idx: np.ndarray, inv_matrix: np.ndarray) -> np.ndarray:
+        """Centroid of the given cloud points, in the IFC frame (mm).
+
+        An affine transform commutes with the mean, so one 4x4 multiply is
+        enough — no need to transform every point just to locate a face.
+        """
+        c_world = self._cloud[idx].mean(axis=0).astype(np.float64)
+        return (inv_matrix @ np.append(c_world, 1.0))[:3] * 1000.0
+
+    def _pick_near_face(
+            self, planes: dict[str, np.ndarray], inv_matrix: np.ndarray,
+            normal_axis: int, sphere_ifc_mm: np.ndarray):
+        """Label + indices of the wall face closest to the robot.
+
+        Faces of one wall differ only along the wall normal, so comparing
+        centroids on that axis picks the side the robot can actually reach.
+        """
+        best_label, best_idx, best_dist = None, None, None
+        for label, idx in planes.items():
+            if len(idx) == 0:
+                continue
+            c = self._face_center_ifc_mm(idx, inv_matrix)
+            dist = abs(float(c[normal_axis]) - float(sphere_ifc_mm[normal_axis]))
+            if best_dist is None or dist < best_dist:
+                best_label, best_idx, best_dist = label, idx, dist
+        return best_label, best_idx
 
     def _on_cloud(self, msg: PointCloud2) -> None:
         if self._cloud is not None:
@@ -219,17 +261,6 @@ class TaskRepresenter(Node):
         center[2] += CENTER_Z_OFFSET  # Adjust for shoulder joint height
 
         wall_id = (self._drill_context.get('wall') or {}).get('id')
-        wall_idx = self._wall_indices.get(wall_id)
-        if wall_idx is None or len(wall_idx) == 0:
-            self.get_logger().warn(
-                f'No points on wall {wall_id} in CSV map.')
-            return None
-
-        wall_pts = self._cloud[wall_idx]
-        dists_sq = np.sum((wall_pts - center) ** 2, axis=1)
-        in_sphere = dists_sq <= (SPHERE_RADIUS * SPHERE_RADIUS)
-
-        wall_id = (self._drill_context.get('wall') or {}).get('id')
         selected_id = (self._drill_context.get('element') or {}).get('id')
         axis2 = (self._drill_context.get('wall') or {}).get('axis2')
         if axis2 is None or len(axis2) != 3:
@@ -241,20 +272,59 @@ class TaskRepresenter(Node):
         normal_axis = int(np.argmax(np.abs(axis2)))
         ax_a, ax_b = [i for i in range(3) if i != normal_axis]
 
-        # Convert wall cloud points to IFC frame (mm).
+        # IFC-mm position of the working-sphere centre (robot shoulder).
         inv_matrix = np.linalg.inv(self._matrix)
+        sphere_h = np.array(
+            [center[0], center[1], center[2], 1.0], dtype=np.float64)
+        sphere_ifc_mm = (inv_matrix @ sphere_h)[:3].astype(np.float64) * 1000.0
+        sphere_r_mm = SPHERE_RADIUS * 1000.0
+
+        # Keep only the wall face the robot is looking at. The footprint
+        # projection drops the normal coordinate, so a point on the far face
+        # would otherwise be given the same category as the near point in front
+        # of it — painting hazards onto a surface the arm cannot reach.
+        planes = self._wall_indices.get(wall_id)
+        if not planes:
+            self.get_logger().warn(
+                f'No points on wall {wall_id} in CSV map.')
+            return None
+        face_label, wall_idx = self._pick_near_face(
+            planes, inv_matrix, normal_axis, sphere_ifc_mm)
+        if wall_idx is None or len(wall_idx) == 0:
+            self.get_logger().warn(
+                f'No points on wall {wall_id} in CSV map.')
+            return None
+        if len(planes) > 1:
+            dropped = sum(
+                len(v) for k, v in planes.items() if k != face_label)
+            self.get_logger().info(
+                f'Wall {wall_id}: using face {face_label} '
+                f'({len(wall_idx)} pts); dropped far face(s) ({dropped} pts).')
+
+        # A single scanned plane is not necessarily the near one: if the only
+        # face captured lies beyond the wall centre, hazards will render behind
+        # the wall and the operator should know.
+        wall_center = (self._drill_context.get('wall') or {}).get('center')
+        if wall_center and len(wall_center) == 3:
+            face_c = self._face_center_ifc_mm(wall_idx, inv_matrix)
+            to_face = float(face_c[normal_axis]) - float(sphere_ifc_mm[normal_axis])
+            to_wall = float(wall_center[normal_axis]) - float(sphere_ifc_mm[normal_axis])
+            if abs(to_face) > abs(to_wall):
+                self.get_logger().warn(
+                    f'Wall {wall_id}: face {face_label} lies beyond the wall '
+                    f'centre; only the far face appears to be scanned.')
+
+        wall_pts = self._cloud[wall_idx]
+        dists_sq = np.sum((wall_pts - center) ** 2, axis=1)
+        in_sphere = dists_sq <= (SPHERE_RADIUS * SPHERE_RADIUS)
+
+        # Convert wall cloud points to IFC frame (mm).
         homog = np.hstack([
             wall_pts.astype(np.float64),
             np.ones((len(wall_pts), 1), dtype=np.float64),
         ])
         wall_pts_ifc_mm = ((inv_matrix @ homog.T).T[:, :3] * 1000.0).astype(
             np.float32)
-
-        # IFC-mm position of the working-sphere centre (robot shoulder).
-        sphere_h = np.array(
-            [center[0], center[1], center[2], 1.0], dtype=np.float64)
-        sphere_ifc_mm = (inv_matrix @ sphere_h)[:3].astype(np.float64) * 1000.0
-        sphere_r_mm = SPHERE_RADIUS * 1000.0
 
         red_mask = np.zeros_like(in_sphere)
         orange_mask = np.zeros_like(in_sphere)
