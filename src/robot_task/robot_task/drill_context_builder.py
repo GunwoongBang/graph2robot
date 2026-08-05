@@ -398,26 +398,40 @@ class DrillContextBuilder(Node):
         shape_type = mep_attrs.get('shapeType', 'cylindrical')
 
         # Pipes are hosted in the service space; drill from the habitable side.
-        # Fixtures are hosted in the room they serve; approach from that same side.
+        # Fixtures are hosted in the room they serve; approach from that same
+        # side. Both the approach direction and the robot's own space follow
+        # from that single choice, so they are made together.
         if shape_type == 'cylindrical':
             facing_sign = -facing_sign
             facing_vec = [-v for v in facing_vec]
+            robot_space_id = self._find_adjacent_space_id(wall_id, space_id)
+        else:
+            robot_space_id = space_id
 
+        # Layers are reported in the order the drill meets them, so the ordering
+        # follows the side of the wall the robot stands on. Read the robot
+        # space's own `side` rather than inferring it from the element's: the
+        # two only coincide when the wall's bounding spaces carry opposite
+        # sides, which fails once a third space bounds the same wall.
         axis2 = wall_attrs.get('axis2', [0.0, 0.0, 0.0])
-        flip = facing_sign * float(axis2[axis_idx]) > 0
+        robot_side_val = (
+            self._get_bounded_by_side(robot_space_id, wall_id)
+            if robot_space_id else None)
+        if robot_side_val is not None:
+            flip = (str(robot_side_val).upper()
+                    == str(wall_attrs.get('directionSense', '')).upper())
+        else:
+            # No space bounds the wall on the robot's side (an exterior wall,
+            # say). Fall back to deriving the order from the element's side.
+            flip = facing_sign * float(axis2[axis_idx]) > 0
+            self.get_logger().warn(
+                f'Wall {wall_id}: no space on the robot side; layer order '
+                f'derived from the element side instead.')
         ordered_layers = self._ordered_layers(wall, flip)
         wall_thickness_mm = sum(
             l.get('thickness_mm') or 0.0 for l in ordered_layers)
         drill_depth_mm = (
             penet_rel.get('depth_mm') if shape_type == 'cylindrical' else penet_rel.get('sizeY'))
-
-        # For cylindrical elements the robot approaches from the opposite side,
-        # so the robot's space is the one adjacent to the wall that is NOT the
-        # MEP's hosting space.
-        if shape_type == 'cylindrical':
-            robot_space_id = self._find_adjacent_space_id(wall_id, space_id)
-        else:
-            robot_space_id = space_id
 
         nearby_elements = self._get_nearby_elements(
             wall_id, robot_space_id, mep_id)
